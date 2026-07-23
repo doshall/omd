@@ -7,6 +7,7 @@
 ### 新增
 - **查找 / 替换**（桌面 / Web / Android）：`Ctrl+F` / `Ctrl+H`，支持区分大小写、全部替换
 - **行号与当前行高亮**（桌面 / Web / Android）：编辑区左侧行号栏，光标所在行背景高亮
+- **编辑区与预览区同步滚动**（桌面 / Web / Android）：分栏模式下按滚动比例联动
 - **滚动条 Minimap**（桌面 / Web / Android）：编辑区右侧文档缩略导航，点击或拖拽定位
 - **桌面版 Mermaid**：纯 Rust 渲染（mermaid-rs-renderer + resvg）
 - **桌面版图片粘贴**：`Ctrl+V` 剪贴板截图（Base64 嵌入）

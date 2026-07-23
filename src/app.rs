@@ -1,9 +1,10 @@
 use crate::clipboard;
 use crate::find_replace::{self, FindBarState};
+use crate::line_gutter;
 use crate::markdown::{self, PreviewContext};
 use crate::mermaid::MermaidCache;
-use crate::line_gutter;
 use crate::minimap::{self, MinimapAction};
+use crate::sync_scroll::{ScrollMetrics, SyncController};
 use eframe::egui;
 use std::path::PathBuf;
 
@@ -130,6 +131,8 @@ pub struct OmdApp {
     mermaid_cache: MermaidCache,
     #[serde(skip)]
     find_bar: FindBarState,
+    #[serde(skip)]
+    sync_scroll: SyncController,
 }
 
 impl Default for OmdApp {
@@ -145,6 +148,7 @@ impl Default for OmdApp {
             status_timer: 0.0,
             mermaid_cache: MermaidCache::default(),
             find_bar: FindBarState::default(),
+            sync_scroll: SyncController::default(),
         }
     }
 }
@@ -436,7 +440,7 @@ impl OmdApp {
         }
     }
 
-    fn render_editor(&mut self, ui: &mut egui::Ui) {
+    fn render_editor(&mut self, ui: &mut egui::Ui) -> ScrollMetrics {
         let font_id = egui::FontId::monospace(14.0);
         let text_color = ui.visuals().text_color();
         let available_height = ui.available_height();
@@ -450,6 +454,7 @@ impl OmdApp {
         let mut scroll_id = egui::Id::NULL;
         let mut scroll_offset_y = 0.0_f32;
         let mut viewport_height = available_height;
+        let mut content_size_y = content_height;
 
         ui.horizontal(|ui| {
             let editor_width = (ui.available_width() - minimap::MINIMAP_WIDTH - 4.0).max(120.0);
@@ -512,6 +517,7 @@ impl OmdApp {
             scroll_id = scroll.id;
             scroll_offset_y = scroll.state.offset.y;
             viewport_height = scroll.inner_rect.height();
+            content_size_y = scroll.content_size.y;
 
             let minimap_action = ui
                 .allocate_ui_with_layout(
@@ -539,9 +545,16 @@ impl OmdApp {
                 );
             }
         });
+
+        ScrollMetrics {
+            id: scroll_id,
+            offset_y: scroll_offset_y,
+            content_height: content_size_y.max(viewport_height),
+            viewport_height,
+        }
     }
 
-    fn render_preview(&mut self, ui: &mut egui::Ui) {
+    fn render_preview(&mut self, ui: &mut egui::Ui) -> ScrollMetrics {
         let content = self.content.clone();
         let base_path = self.file_path.as_ref().and_then(|p| p.parent());
         let mut ctx = PreviewContext {
@@ -549,13 +562,21 @@ impl OmdApp {
             base_path,
             mermaid_cache: &mut self.mermaid_cache,
         };
-        egui::ScrollArea::both()
+        let scroll = egui::ScrollArea::both()
+            .id_salt("omd_preview_scroll")
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.set_max_width(ui.available_width());
                 ui.add_space(8.0);
                 markdown::render_preview(ui, &content, &mut ctx);
             });
+
+        ScrollMetrics {
+            id: scroll.id,
+            offset_y: scroll.state.offset.y,
+            content_height: scroll.content_size.y.max(scroll.inner_rect.height()),
+            viewport_height: scroll.inner_rect.height(),
+        }
     }
 
     fn render_status_bar(&self, ui: &mut egui::Ui) {
@@ -726,13 +747,21 @@ impl eframe::App for OmdApp {
                 let left_width = available * self.split_ratio;
 
                 ui.horizontal(|ui| {
+                    let mut editor_metrics = ScrollMetrics {
+                        id: egui::Id::NULL,
+                        offset_y: 0.0,
+                        content_height: 1.0,
+                        viewport_height: 1.0,
+                    };
+                    let mut preview_metrics = editor_metrics;
+
                     ui.allocate_ui_with_layout(
                         egui::vec2(left_width, ui.available_height()),
                         egui::Layout::top_down(egui::Align::LEFT),
                         |ui| {
                             ui.heading("Editor");
                             ui.separator();
-                            self.render_editor(ui);
+                            editor_metrics = self.render_editor(ui);
                         },
                     );
 
@@ -749,9 +778,12 @@ impl eframe::App for OmdApp {
                         |ui| {
                             ui.heading("Preview");
                             ui.separator();
-                            self.render_preview(ui);
+                            preview_metrics = self.render_preview(ui);
                         },
                     );
+
+                    self.sync_scroll
+                        .sync(ui.ctx(), editor_metrics, preview_metrics);
                 });
             } else {
                 ui.heading("Editor");

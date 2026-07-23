@@ -8,6 +8,7 @@ mod line_gutter;
 mod markdown;
 mod mermaid;
 mod minimap;
+mod sync_scroll;
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
