@@ -7,7 +7,8 @@
 ### 我是新用户
 
 1. [用户指南](user-guide.md) — 了解功能和基本操作
-2. [桌面版指南](desktop.md)、[Web 版指南](web.md) 或 [Android 版指南](android.md) — 选择你的版本
+2. **在线体验 Web 版**：https://doshall.github.io/omd/
+3. [桌面版指南](desktop.md)、[Web 版指南](web.md) 或 [Android 版指南](android.md) — 选择你的版本
 3. [Markdown 语法支持](markdown-syntax.md) — 写作参考
 4. [常见问题](faq.md) — 遇到问题先看这里
 
@@ -20,7 +21,7 @@
 ### 我想部署 Web 版
 
 1. [Web 版指南](web.md) — 构建与运行
-2. [部署指南](deployment.md) — GitHub Pages / Docker / Nginx
+2. [部署指南](deployment.md) — GitHub Pages（已上线）/ Docker / Nginx
 3. [配置参考](configuration.md) — Trunk、localStorage、主题
 4. [安全说明](security.md) — CSP、CDN、XSS
 

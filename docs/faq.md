@@ -14,7 +14,9 @@ omd 是一款用 Rust 编写的轻量级 Markdown 编辑器，提供**桌面版*
 | 文件管理 | 直接读写磁盘 | 导入/下载 | 文件关联打开 |
 | Mermaid | ✅ | ✅ | ✅ |
 | 图片粘贴 | ✅ | ✅ | ✅ |
-| 自动保存 | 手动 | 自动（localStorage） | 自动（localStorage） |
+| 自动保存 | ✅ 磁盘（可配置） | 自动（localStorage） | 自动（localStorage） |
+| 导出 HTML | ✅ | ✅ | — |
+| 在线演示 | — | https://doshall.github.io/omd/ | — |
 | 手机使用 | ❌ | ✅ 响应式 | ✅ |
 
 详见 [用户指南](user-guide.md#版本选择)。
@@ -119,9 +121,9 @@ cd web && trunk serve
 # 手机浏览器访问 http://<电脑IP>:8080
 ```
 
-**方式二：部署到公网**
+**方式二：在线演示或公网部署**
 
-将 `web/dist/` 部署到 GitHub Pages 等，手机直接访问 URL。
+直接访问 https://doshall.github.io/omd/ ，或自行部署 `web/dist/` 到静态托管。
 
 **方式三：手机 Cursor 浏览器**
 
@@ -176,6 +178,10 @@ rustup target add wasm32-unknown-unknown
 ---
 
 ## 其他
+
+### 支持导出 HTML 吗？
+
+支持。桌面版：**File → Export HTML…** 或工具栏 **📤**；Web 版：顶部 **导出 HTML**。生成独立 HTML 文件，含 Mermaid 与代码高亮。
 
 ### 支持导出 PDF 吗？
 

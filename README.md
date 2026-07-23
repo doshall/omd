@@ -2,6 +2,8 @@
 
 **omd** 是一款使用 Rust 编写的轻量级 Markdown 编辑器，提供**桌面版**、**Web 版**和 **Android 版**（当前版本 **v0.3.0**）。
 
+**在线体验**：https://doshall.github.io/omd/
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](rust-toolchain.toml)
 
@@ -13,7 +15,9 @@
 - 查找 / 替换、行号、Minimap、同步滚动、语法高亮
 - Vim / Emacs 可选键位模式
 - 图片插入（URL、本地文件、粘贴、拖拽）
-- 桌面版原生文件管理 / Web 版自动保存
+- 导出 HTML（桌面 / Web）
+- 桌面版：文件管理、自动保存、关闭前确认
+- Web 版：PWA 可安装、localStorage 自动保存
 
 ## 版本对比
 
@@ -24,8 +28,9 @@
 | **技术栈** | egui / eframe | Leptos / WASM | WebView + WASM |
 | **Mermaid** | ✅ | ✅ | ✅ |
 | **图片粘贴** | ✅ | ✅ | ✅ |
-| **离线** | ✅ | 部署后 | ✅ |
-| **自动保存** | 手动 `Ctrl+S` | localStorage | localStorage |
+| **离线** | ✅ | ✅ PWA | ✅ |
+| **自动保存** | ✅ 磁盘（可配置） | localStorage | localStorage |
+| **导出 HTML** | ✅ | ✅ | — |
 
 ## 快速开始
 

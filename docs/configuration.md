@@ -243,7 +243,7 @@ localStorage.removeItem('omd-web-view');
 |------|-----|------|
 | Mermaid.js 11 | `cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js` | 图表渲染 |
 
-离线部署需替换为本地文件，参见 [部署指南](deployment.md#mermaid-cdn-离线化)。
+离线资源（Mermaid）由 `scripts/fetch-web-assets.sh` 下载；CI / Pages / Release 构建前自动执行。
 
 ### Mermaid 初始化配置
 

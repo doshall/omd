@@ -307,7 +307,7 @@ CSS 自定义属性：
 | 新 Markdown 语法 | `markdown.rs`（两个版本） |
 | 新工具栏按钮 | `app.rs` / `lib.rs` 的 toolbar 区域 |
 | 新文件格式 | `app.rs` 的 file dialog filters |
-| 导出功能 | 新增 `export.rs` 模块 |
+| 导出功能 | `src/export.rs`、`web/src/export.rs` — Markdown → 独立 HTML |
 | 插件系统 | 新增 `plugin.rs` + trait 定义 |
 | 语法高亮 | 预览渲染器或引入 highlight.js |
 

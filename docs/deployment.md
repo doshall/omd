@@ -9,6 +9,9 @@ Web 版构建产物为纯静态文件（HTML + WASM + CSS + JS），可部署到
 ### 构建发布包
 
 ```bash
+# 若尚未下载离线 Mermaid（gitignore），先执行：
+bash scripts/fetch-web-assets.sh
+
 cd web
 trunk build --release
 ```
@@ -54,79 +57,39 @@ AddType application/wasm .wasm
 
 ## GitHub Pages
 
-### 方式一：手动部署
+**在线演示**：https://doshall.github.io/omd/
+
+### 自动部署（推荐，已启用）
+
+仓库已配置 `.github/workflows/pages.yml`：向 `main` 推送 `web/**` 或该 workflow 文件时，自动构建并部署到 GitHub Pages。
+
+**一次性设置**（仓库管理员）：
+
+1. 打开 [Settings → Pages](https://github.com/doshall/omd/settings/pages)
+2. **Build and deployment → Source** 选择 **GitHub Actions**
+3. 保存后，下次 workflow 成功即可访问站点
+
+**构建流程要点**：
+
+- 运行 `scripts/fetch-web-assets.sh` 下载 `web/assets/mermaid.min.js`（该文件在 `.gitignore` 中，CI 需先拉取）
+- `trunk build --release` 生成 `web/dist/`
+- `actions/deploy-pages` 发布产物
+
+查看部署状态：[Actions → Deploy Web to GitHub Pages](https://github.com/doshall/omd/actions/workflows/pages.yml)
+
+### 手动部署
+
+若需自行上传静态文件：
 
 ```bash
+bash scripts/fetch-web-assets.sh
 cd web
 trunk build --release
 
-# 将 dist/ 内容推送到 gh-pages 分支
-cd dist
-git init
-git add .
-git commit -m "deploy"
-git remote add origin https://github.com/doshall/omd.git
-git push -f origin main:gh-pages
+# 将 dist/ 内容推送到 gh-pages 分支，或上传到任意静态托管
 ```
 
-访问：`https://doshall.github.io/omd/`
-
-### 方式二：GitHub Actions 自动部署
-
-创建 `.github/workflows/deploy-web.yml`：
-
-```yaml
-name: Deploy Web
-
-on:
-  push:
-    branches: [main]
-    paths: ['web/**']
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Add WASM target
-        run: rustup target add wasm32-unknown-unknown
-
-      - name: Install Trunk
-        run: cargo install trunk --locked
-
-      - name: Build
-        run: cd web && trunk build --release
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: web/dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
-```
-
-需在仓库 Settings → Pages 中启用 GitHub Pages，Source 选 GitHub Actions。
+访问：`https://doshall.github.io/omd/`（项目站路径为 `/omd/`）
 
 ---
 
@@ -250,15 +213,13 @@ public_url = "/omd/"
 
 ## Mermaid CDN 离线化
 
-默认从 `cdn.jsdelivr.net` 加载 Mermaid.js。若部署环境无外网：
+默认从 CDN 加载 Mermaid.js。本地开发与 CI 构建前可执行：
 
-1. 下载 Mermaid 到 `web/assets/mermaid.min.js`
-2. 修改 `index.html`：
-
-```html
-<!-- 替换 CDN 链接 -->
-<script data-trunk rel="copy-file" href="assets/mermaid.min.js"></script>
+```bash
+bash scripts/fetch-web-assets.sh
 ```
+
+该脚本将 Mermaid 下载到 `web/assets/mermaid.min.js`（已在 `.gitignore` 中，不提交仓库）。`index.html` 已配置本地副本与 CDN 回退。
 
 ---
 
