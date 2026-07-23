@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 修复
+
+- **Release CI**：`release.yml` 支持 `workflow_dispatch` 补发历史 tag；Web 构建前自动下载 `mermaid.min.js`（含旧 tag 回退）
+
 ## [0.3.0] - 2026-07-23
 
 ### 新增 — 桌面版
