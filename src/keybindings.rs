@@ -87,6 +87,9 @@ pub struct KeybindingState {
     pub block_head: Option<BlockPos>,
     pub active_block: Option<BlockRect>,
     pub use_system_clipboard: bool,
+    /// Visual Block insert: `(rect, insert_column)`.
+    pub block_insert: Option<(BlockRect, usize)>,
+    pub emacs_mark: Option<usize>,
 }
 
 impl KeybindingState {
@@ -363,6 +366,53 @@ fn char_range_to_bytes(content: &str, start: usize, end: usize) -> (usize, usize
 
 fn selection_range(cursor: usize, selection: Option<(usize, usize)>) -> (usize, usize) {
     selection.unwrap_or((cursor, cursor))
+}
+
+fn clear_block_state(state: &mut KeybindingState) {
+    state.block_anchor = None;
+    state.block_head = None;
+    state.active_block = None;
+    state.block_insert = None;
+}
+
+fn join_line(content: &mut String, cursor: usize) -> usize {
+    let end = line_end_char(content, cursor);
+    if end >= content.chars().count() {
+        return cursor;
+    }
+    delete_char_at(content, end);
+    let prev = if end > 0 {
+        content.chars().nth(end - 1)
+    } else {
+        None
+    };
+    let next = content.chars().nth(end);
+    if prev != Some(' ') && next != Some(' ') && next.is_some() {
+        return insert_text(content, end, " ");
+    }
+    cursor.min(end)
+}
+
+fn open_line(content: &mut String, cursor: usize) -> usize {
+    let pos = line_end_char(content, cursor);
+    insert_text(content, pos, "\n");
+    cursor
+}
+
+fn transpose_chars(content: &mut String, cursor: usize) -> usize {
+    if cursor < 2 {
+        return cursor;
+    }
+    let a = cursor - 2;
+    let b = cursor - 1;
+    let chars: Vec<char> = content.chars().collect();
+    if a >= chars.len() || b >= chars.len() {
+        return cursor;
+    }
+    let mut swapped = chars;
+    swapped.swap(a, b);
+    *content = swapped.into_iter().collect();
+    cursor
 }
 
 fn yank_into(state: &mut KeybindingState, text: String) {
@@ -791,6 +841,37 @@ pub fn handle_vim(
 
     match state.vim_mode {
         VimMode::Insert => {
+            if let Some((rect, col)) = state.block_insert {
+                if key == Key::Escape {
+                    clear_block_state(state);
+                    state.pending = Pending::None;
+                    state.count = 0;
+                    return Some(KeyAction {
+                        content_changed: false,
+                        cursor,
+                        selection: None,
+                        block_selection: None,
+                        command_result: None,
+                        vim_mode: Some(VimMode::Normal),
+                        status: Some("NORMAL".to_string()),
+                    });
+                }
+                if key == Key::Backspace {
+                    let new_col = col.saturating_sub(1);
+                    let new_cursor = vim_ex::delete_block_column_char(content, rect, col);
+                    state.block_insert = Some((rect, new_col));
+                    return Some(KeyAction {
+                        content_changed: true,
+                        cursor: new_cursor,
+                        selection: None,
+                        block_selection: Some(rect),
+                        vim_mode: Some(VimMode::Insert),
+                        status: None,
+                        command_result: None,
+                    });
+                }
+                return None;
+            }
             if key == Key::Escape {
                 state.pending = Pending::None;
                 state.count = 0;
@@ -1411,9 +1492,7 @@ fn handle_vim_visual_block(
         Key::K if head.line > 0 => head.line -= 1,
         Key::J => head.line += 1,
         Key::Escape => {
-            state.block_anchor = None;
-            state.block_head = None;
-            state.active_block = None;
+            clear_block_state(state);
             return Some(KeyAction {
                 content_changed: false,
                 cursor,
@@ -1427,9 +1506,7 @@ fn handle_vim_visual_block(
         Key::Y => {
             let rect = BlockRect::from_positions(anchor, head);
             yank_into(state, vim_ex::yank_block(content, rect));
-            state.block_anchor = None;
-            state.block_head = None;
-            state.active_block = None;
+            clear_block_state(state);
             return Some(KeyAction {
                 content_changed: false,
                 cursor,
@@ -1444,9 +1521,7 @@ fn handle_vim_visual_block(
             let rect = BlockRect::from_positions(anchor, head);
             yank_into(state, vim_ex::yank_block(content, rect));
             let new_cursor = vim_ex::delete_block(content, rect);
-            state.block_anchor = None;
-            state.block_head = None;
-            state.active_block = None;
+            clear_block_state(state);
             return Some(KeyAction {
                 content_changed: true,
                 cursor: new_cursor,
@@ -1454,6 +1529,48 @@ fn handle_vim_visual_block(
                 block_selection: None,
                 vim_mode: Some(VimMode::Normal),
                 status: Some("NORMAL".to_string()),
+                command_result: None,
+            });
+        }
+        Key::I => {
+            let rect = BlockRect::from_positions(anchor, head);
+            state.block_insert = Some((rect, rect.col_start));
+            state.active_block = Some(rect);
+            let new_cursor = vim_ex::block_pos_to_char_index(
+                content,
+                BlockPos {
+                    line: rect.line_start,
+                    col: rect.col_start,
+                },
+            );
+            return Some(KeyAction {
+                content_changed: false,
+                cursor: new_cursor,
+                selection: None,
+                block_selection: Some(rect),
+                vim_mode: Some(VimMode::Insert),
+                status: Some("INSERT (block)".to_string()),
+                command_result: None,
+            });
+        }
+        Key::A => {
+            let rect = BlockRect::from_positions(anchor, head);
+            state.block_insert = Some((rect, rect.col_end));
+            state.active_block = Some(rect);
+            let new_cursor = vim_ex::block_pos_to_char_index(
+                content,
+                BlockPos {
+                    line: rect.line_start,
+                    col: rect.col_end,
+                },
+            );
+            return Some(KeyAction {
+                content_changed: false,
+                cursor: new_cursor,
+                selection: None,
+                block_selection: Some(rect),
+                vim_mode: Some(VimMode::Insert),
+                status: Some("INSERT (block)".to_string()),
                 command_result: None,
             });
         }
@@ -1571,7 +1688,7 @@ pub fn render_vim_command_bar(
         let response = ui.add(
             egui::TextEdit::singleline(&mut state.command_buffer)
                 .desired_width(ui.available_width() - 8.0)
-                .hint_text("w · q · 42 · %s/old/new/g · set number · reg"),
+                .hint_text("w · q · 42 · 1,5d · g/pat/d · g/pat/s/o/n/g · set number · reg"),
         );
         response.request_focus();
         if ui.input(|i| i.key_pressed(Key::Enter)) {
@@ -1624,12 +1741,56 @@ pub fn handle_emacs(
                 push_kill_ring(state, killed);
                 Some(KeyAction::changed(cursor))
             }
+            Key::W => {
+                let mark = state.emacs_mark.unwrap_or(cursor);
+                let (a, b) = ordered(mark, cursor);
+                if a != b {
+                    let text = kill_region(content, a, b);
+                    push_kill_ring(state, text);
+                }
+                Some(KeyAction {
+                    content_changed: false,
+                    cursor,
+                    selection: None,
+                    block_selection: None,
+                    vim_mode: None,
+                    status: Some("Region copied".to_string()),
+                    command_result: None,
+                })
+            }
             _ => None,
         };
     }
 
     if !ctrl {
         return None;
+    }
+
+    if key == Key::G {
+        state.emacs_prefix = None;
+        state.emacs_mark = None;
+        return Some(KeyAction {
+            content_changed: false,
+            cursor,
+            selection: None,
+            block_selection: None,
+            vim_mode: None,
+            status: Some("Quit".to_string()),
+            command_result: None,
+        });
+    }
+
+    if key == Key::Space {
+        state.emacs_mark = Some(cursor);
+        return Some(KeyAction {
+            content_changed: false,
+            cursor,
+            selection: None,
+            block_selection: None,
+            vim_mode: None,
+            status: Some("Mark set".to_string()),
+            command_result: None,
+        });
     }
 
     match key {
@@ -1684,6 +1845,9 @@ pub fn handle_emacs(
             }
             Some(KeyAction::cursor_only(cursor))
         }
+        Key::O => Some(KeyAction::changed(open_line(content, cursor))),
+        Key::J => Some(KeyAction::changed(join_line(content, cursor))),
+        Key::T => Some(KeyAction::changed(transpose_chars(content, cursor))),
         Key::Slash | Key::Backslash => Some(KeyAction {
             content_changed: false,
             cursor,
@@ -1748,7 +1912,7 @@ pub fn process_egui_input(
             let result = match mode {
                 KeybindingMode::Vim => {
                     if state.vim_mode == VimMode::Insert {
-                        if key == Key::Escape {
+                        if state.block_insert.is_some() || key == Key::Escape {
                             handle_vim(content, state, key, modifiers, cursor, selection)
                         } else {
                             None
@@ -1769,6 +1933,30 @@ pub fn process_egui_input(
                 }
                 action = Some(act);
                 break;
+            }
+        }
+        if action.is_none() && mode == KeybindingMode::Vim && state.vim_mode == VimMode::Insert {
+            if let Some((rect, col)) = state.block_insert {
+                for event in &input.events {
+                    if let egui::Event::Text(text) = event {
+                        if !text.is_empty() {
+                            let new_cursor =
+                                vim_ex::insert_block_column(content, rect, col, text);
+                            state.block_insert =
+                                Some((rect, col + text.chars().count()));
+                            action = Some(KeyAction {
+                                content_changed: true,
+                                cursor: new_cursor,
+                                selection: None,
+                                block_selection: Some(rect),
+                                vim_mode: Some(VimMode::Insert),
+                                status: None,
+                                command_result: None,
+                            });
+                            break;
+                        }
+                    }
+                }
             }
         }
         if action.is_none() && mode == KeybindingMode::Vim && state.vim_mode == VimMode::Normal {
@@ -1819,6 +2007,8 @@ pub fn reset_for_mode(state: &mut KeybindingState, mode: KeybindingMode) {
     state.block_anchor = None;
     state.block_head = None;
     state.active_block = None;
+    state.block_insert = None;
+    state.emacs_mark = None;
     state.vim_mode = match mode {
         KeybindingMode::Vim => VimMode::Normal,
         _ => VimMode::Insert,

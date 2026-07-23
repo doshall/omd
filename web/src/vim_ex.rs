@@ -105,6 +105,63 @@ pub fn delete_block(content: &mut String, rect: BlockRect) -> usize {
     cursor
 }
 
+/// Insert `text` at `col` on every line in `rect` (bottom-up to preserve indices).
+pub fn insert_block_column(content: &mut String, rect: BlockRect, col: usize, text: &str) -> usize {
+    if text.is_empty() {
+        return block_pos_to_char_index(
+            content,
+            BlockPos {
+                line: rect.line_start,
+                col,
+            },
+        );
+    }
+    for line in (rect.line_start..=rect.line_end).rev() {
+        let (start, end) = line_col_range(content, line);
+        let line_len = end.saturating_sub(start);
+        let insert_col = col.min(line_len);
+        let char_pos = start + insert_col;
+        let (sb, _) = char_range_to_bytes(content, char_pos, char_pos);
+        content.insert_str(sb, text);
+    }
+    block_pos_to_char_index(
+        content,
+        BlockPos {
+            line: rect.line_start,
+            col: col + text.chars().count(),
+        },
+    )
+}
+
+/// Delete one character before `col` on every line in `rect`.
+pub fn delete_block_column_char(content: &mut String, rect: BlockRect, col: usize) -> usize {
+    if col == 0 {
+        return block_pos_to_char_index(
+            content,
+            BlockPos {
+                line: rect.line_start,
+                col: 0,
+            },
+        );
+    }
+    for line in (rect.line_start..=rect.line_end).rev() {
+        let (start, end) = line_col_range(content, line);
+        let line_len = end.saturating_sub(start);
+        let del_col = col.saturating_sub(1).min(line_len);
+        if del_col < line_len {
+            let (sb, eb) = char_range_to_bytes(content, start + del_col, start + del_col + 1);
+            content.replace_range(sb..eb, "");
+        }
+    }
+    block_pos_to_char_index(
+        content,
+        BlockPos {
+            line: rect.line_start,
+            col: col.saturating_sub(1),
+        },
+    )
+}
+
 fn char_range_to_bytes(content: &str, start: usize, end: usize) -> (usize, usize) {
     let sb = content
         .char_indices()
@@ -215,7 +272,7 @@ pub fn execute_vim_command(cmd: &str, content: &mut String, cursor: usize) -> Vi
 
     if trimmed == "help" || trimmed == "h" {
         return VimCommandResult {
-            status: "Commands: w q wq [n] [a,b]d g/pat/d v/pat/d %s/pat/rep/g set number|nonumber reg".to_string(),
+            status: "Commands: w q wq [n] [a,b]d g/pat/d g/pat/s/o/n/g v/pat/d %s/pat/rep/g set number|nonumber reg".to_string(),
             cursor: None,
             content_changed: false,
             request_save: false,
@@ -518,23 +575,36 @@ fn parse_global_command(cmd: &str, content: &mut String, cursor: usize) -> Optio
     let end = after_sep.find(sep)?;
     let pattern = &after_sep[..end];
     let action = after_sep[end + sep.len_utf8()..].trim();
-    if action != "d" && action != "delete" {
-        return Some(VimCommandResult {
-            status: format!("Unsupported global action: {action}"),
-            cursor: Some(cursor),
-            content_changed: false,
-            request_save: false,
-            line_numbers: None,
-        });
+
+    if action == "d" || action == "delete" {
+        return Some(global_delete_lines(content, cursor, pattern, invert));
     }
 
+    if let Some((old, new, global)) = parse_substitute_action(action) {
+        return Some(global_substitute_lines(
+            content, cursor, pattern, invert, &old, &new, global,
+        ));
+    }
+
+    Some(VimCommandResult {
+        status: format!("Unsupported global action: {action}"),
+        cursor: Some(cursor),
+        content_changed: false,
+        request_save: false,
+        line_numbers: None,
+    })
+}
+
+fn global_delete_lines(
+    content: &mut String,
+    cursor: usize,
+    pattern: &str,
+    invert: bool,
+) -> VimCommandResult {
     let mut lines_to_delete = Vec::new();
     let total = line_count(content);
     for line in 0..total {
-        let (start, end_idx) = line_col_range(content, line);
-        let line_text: String = content.chars().skip(start).take(end_idx - start).collect();
-        let matches = line_text.contains(pattern);
-        if matches != invert {
+        if line_matches_pattern(content, line, pattern, invert) {
             lines_to_delete.push(line);
         }
     }
@@ -544,13 +614,82 @@ fn parse_global_command(cmd: &str, content: &mut String, cursor: usize) -> Optio
         delete_line_at(content, line);
     }
 
-    Some(VimCommandResult {
+    VimCommandResult {
         status: format!("{deleted} line(s) deleted"),
         cursor: Some(cursor.min(content.chars().count())),
         content_changed: deleted > 0,
         request_save: false,
         line_numbers: None,
-    })
+    }
+}
+
+fn global_substitute_lines(
+    content: &mut String,
+    cursor: usize,
+    line_pattern: &str,
+    invert: bool,
+    old: &str,
+    new: &str,
+    global: bool,
+) -> VimCommandResult {
+    let total = line_count(content);
+    let mut total_subs = 0usize;
+    for line in 0..total {
+        if !line_matches_pattern(content, line, line_pattern, invert) {
+            continue;
+        }
+        let (start, end_idx) = line_col_range(content, line);
+        let line_text: String = content.chars().skip(start).take(end_idx - start).collect();
+        let (new_line, count) = substitute_in_line(&line_text, old, new, global);
+        if count > 0 {
+            let (sb, eb) = char_range_to_bytes(content, start, end_idx);
+            content.replace_range(sb..eb, &new_line);
+            total_subs += count;
+        }
+    }
+
+    VimCommandResult {
+        status: format!("{total_subs} substitution(s) on matching lines"),
+        cursor: Some(cursor.min(content.chars().count())),
+        content_changed: total_subs > 0,
+        request_save: false,
+        line_numbers: None,
+    }
+}
+
+fn line_matches_pattern(content: &str, line: usize, pattern: &str, invert: bool) -> bool {
+    let (start, end_idx) = line_col_range(content, line);
+    let line_text: String = content.chars().skip(start).take(end_idx - start).collect();
+    line_text.contains(pattern) != invert
+}
+
+fn parse_substitute_action(action: &str) -> Option<(String, String, bool)> {
+    let rest = action.strip_prefix('s')?;
+    let sep = rest.chars().next()?;
+    if sep != '/' && sep != '#' {
+        return None;
+    }
+    let body = &rest[sep.len_utf8()..];
+    let parts: Vec<&str> = body.split(sep).collect();
+    if parts.len() < 2 {
+        return None;
+    }
+    let global = parts.get(2).is_some_and(|f| f.contains('g'));
+    Some((parts[0].to_string(), parts[1].to_string(), global))
+}
+
+fn substitute_in_line(line: &str, old: &str, new: &str, global: bool) -> (String, usize) {
+    if old.is_empty() {
+        return (line.to_string(), 0);
+    }
+    if global {
+        let count = line.matches(old).count();
+        (line.replace(old, new), count)
+    } else if let Some(replaced) = replace_first_literal(line, old, new) {
+        (replaced, 1)
+    } else {
+        (line.to_string(), 0)
+    }
 }
 
 fn parse_substitute(cmd: &str, content: &mut String, cursor: usize) -> Option<VimCommandResult> {
@@ -666,5 +805,24 @@ mod tests {
         let r = execute_vim_command("v/bb/d", &mut text, 0);
         assert!(r.content_changed);
         assert_eq!(text, "bb");
+    }
+
+    #[test]
+    fn global_substitute_on_matching_lines() {
+        let mut text = "foo bar\nbaz qux\nfoo again".to_string();
+        let r = execute_vim_command("g/foo/s/foo/egg/g", &mut text, 0);
+        assert!(r.content_changed);
+        assert_eq!(text, "egg bar\nbaz qux\negg again");
+    }
+
+    #[test]
+    fn insert_block_column_on_lines() {
+        let mut text = "ab\nef\nij".to_string();
+        let rect = BlockRect::from_positions(
+            BlockPos { line: 0, col: 1 },
+            BlockPos { line: 2, col: 1 },
+        );
+        insert_block_column(&mut text, rect, 1, "X");
+        assert_eq!(text, "aXb\neXf\niXj");
     }
 }
