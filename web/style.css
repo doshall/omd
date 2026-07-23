@@ -294,6 +294,73 @@ html, body {
     min-width: 0;
     min-height: 0;
     background: var(--surface);
+    overflow: hidden;
+}
+
+.editor-highlight-layer {
+    position: absolute;
+    inset: 0;
+    padding: var(--editor-pad);
+    overflow: auto;
+    scrollbar-width: none;
+    font-family: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+    font-size: var(--editor-font-size);
+    line-height: var(--editor-line-height);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.editor-highlight-layer::-webkit-scrollbar {
+    display: none;
+}
+
+.editor-highlight-layer .md-heading {
+    color: var(--text);
+    font-weight: 700;
+}
+
+.editor-highlight-layer .md-code-block {
+    color: var(--text-muted);
+}
+
+.editor-highlight-layer .md-code {
+    color: #af245c;
+}
+
+[data-theme="dark"] .editor-highlight-layer .md-code {
+    color: #98c379;
+}
+
+.editor-highlight-layer .md-bold {
+    color: var(--text);
+    font-weight: 700;
+}
+
+.editor-highlight-layer .md-italic {
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.editor-highlight-layer .md-link,
+.editor-highlight-layer .md-url {
+    color: var(--accent);
+}
+
+.editor-highlight-layer .md-image {
+    color: #48a060;
+}
+
+.editor-highlight-layer .md-list,
+.editor-highlight-layer .md-blockquote {
+    color: var(--text-muted);
+}
+
+.editor-pane textarea.syntax-highlight {
+    color: transparent;
+    caret-color: var(--text);
+    -webkit-text-fill-color: transparent;
 }
 
 .current-line-highlight {

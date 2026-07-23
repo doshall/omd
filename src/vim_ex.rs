@@ -105,6 +105,66 @@ pub fn delete_block(content: &mut String, rect: BlockRect) -> usize {
     cursor
 }
 
+pub fn toggle_case_block(content: &mut String, rect: BlockRect) -> usize {
+    let mut cursor = block_pos_to_char_index(
+        content,
+        BlockPos {
+            line: rect.line_start,
+            col: rect.col_start,
+        },
+    );
+    for line in (rect.line_start..=rect.line_end).rev() {
+        let (start, end) = line_col_range(content, line);
+        let line_len = end.saturating_sub(start);
+        let col_start = rect.col_start.min(line_len);
+        let col_end = rect.col_end.min(line_len);
+        if col_start < col_end {
+            let toggled: String = content
+                .chars()
+                .skip(start + col_start)
+                .take(col_end - col_start)
+                .map(|c| match c {
+                    'a'..='z' => c.to_ascii_uppercase(),
+                    'A'..='Z' => c.to_ascii_lowercase(),
+                    other => other,
+                })
+                .collect();
+            let del_start = start + col_start;
+            let del_end = start + col_end;
+            let (sb, eb) = char_range_to_bytes(content, del_start, del_end);
+            content.replace_range(sb..eb, &toggled);
+            cursor = del_start;
+        }
+    }
+    cursor
+}
+
+pub fn indent_block_lines(content: &mut String, rect: BlockRect) -> usize {
+    for line in (rect.line_start..=rect.line_end).rev() {
+        indent_line_at(content, line);
+    }
+    block_pos_to_char_index(
+        content,
+        BlockPos {
+            line: rect.line_start,
+            col: rect.col_start,
+        },
+    )
+}
+
+pub fn unindent_block_lines(content: &mut String, rect: BlockRect) -> usize {
+    for line in (rect.line_start..=rect.line_end).rev() {
+        let _ = unindent_line_at(content, line);
+    }
+    block_pos_to_char_index(
+        content,
+        BlockPos {
+            line: rect.line_start,
+            col: rect.col_start,
+        },
+    )
+}
+
 /// Insert `text` at `col` on every line in `rect` (bottom-up to preserve indices).
 pub fn insert_block_column(content: &mut String, rect: BlockRect, col: usize, text: &str) -> usize {
     if text.is_empty() {
@@ -160,6 +220,248 @@ pub fn delete_block_column_char(content: &mut String, rect: BlockRect, col: usiz
             col: col.saturating_sub(1),
         },
     )
+}
+
+/// Apply normal-mode commands at the start of `line` (for `:g/pat/norm`).
+pub fn apply_norm_at_line(content: &mut String, line: usize, cmd: &str) -> bool {
+    let trimmed = cmd.trim_start();
+    if trimmed.is_empty() {
+        return false;
+    }
+    if trimmed.starts_with('I') || trimmed.starts_with('A') {
+        return apply_norm_step(content, line, trimmed, 1).1;
+    }
+    let chars: Vec<char> = trimmed.chars().collect();
+    let mut pos = 0usize;
+    let mut changed = false;
+    while pos < chars.len() {
+        let (count, next) = parse_norm_count(&chars, pos);
+        pos = next;
+        if pos >= chars.len() {
+            break;
+        }
+        let rest: String = chars[pos..].iter().collect();
+        let (consumed, step_changed) = apply_norm_step(content, line, &rest, count);
+        if consumed == 0 {
+            break;
+        }
+        pos += consumed;
+        changed |= step_changed;
+    }
+    changed
+}
+
+fn parse_norm_count(chars: &[char], mut pos: usize) -> (usize, usize) {
+    let start = pos;
+    let mut count = 0usize;
+    while pos < chars.len() && chars[pos].is_ascii_digit() {
+        count = count * 10 + (chars[pos] as u8 - b'0') as usize;
+        pos += 1;
+    }
+    if pos == start {
+        (1, pos)
+    } else {
+        (count.max(1), pos)
+    }
+}
+
+fn norm_word_end(content: &str, start: usize, end: usize) -> usize {
+    let mut pos = start;
+    while pos < end && content.chars().nth(pos).is_some_and(|c| c.is_whitespace()) {
+        pos += 1;
+    }
+    let mut word_end = pos;
+    if let Some(ch) = content.chars().nth(pos) {
+        if ch.is_alphanumeric() || ch == '_' {
+            while word_end < end {
+                let c = content.chars().nth(word_end).unwrap();
+                if !c.is_alphanumeric() && c != '_' {
+                    break;
+                }
+                word_end += 1;
+            }
+        } else {
+            word_end = pos + 1;
+        }
+    }
+    word_end
+}
+
+fn join_line_with_next(content: &mut String, line: usize) -> bool {
+    let line_count = content.chars().filter(|&c| c == '\n').count() + 1;
+    if line + 1 >= line_count {
+        return false;
+    }
+    let (_, le) = line_col_range(content, line);
+    if content.chars().nth(le) == Some('\n') {
+        let (sb, eb) = char_range_to_bytes(content, le, le + 1);
+        content.replace_range(sb..eb, "");
+        return true;
+    }
+    false
+}
+
+fn apply_norm_step(content: &mut String, line: usize, cmd: &str, count: usize) -> (usize, bool) {
+    if cmd.is_empty() {
+        return (0, false);
+    }
+    let chars: Vec<char> = cmd.chars().collect();
+    if chars[0] == 'I' {
+        let text: String = chars[1..].iter().collect();
+        let (start, _) = line_col_range(content, line);
+        let (sb, _) = char_range_to_bytes(content, start, start);
+        content.insert_str(sb, &text);
+        return (cmd.chars().count(), true);
+    }
+    if chars[0] == 'A' {
+        let text: String = chars[1..].iter().collect();
+        let (_, end) = line_col_range(content, line);
+        let (sb, _) = char_range_to_bytes(content, end, end);
+        content.insert_str(sb, &text);
+        return (cmd.chars().count(), true);
+    }
+    if cmd.starts_with("ciw") {
+        let (start, end) = line_col_range(content, line);
+        let word_end = norm_word_end(content, start, end);
+        if word_end > start {
+            let (sb, eb) = char_range_to_bytes(content, start, word_end);
+            content.replace_range(sb..eb, "");
+            return (3, true);
+        }
+        return (3, false);
+    }
+    if cmd.starts_with("cw") {
+        let (start, end) = line_col_range(content, line);
+        let mut pos = start;
+        while pos < end && content.chars().nth(pos).is_some_and(|c| c.is_whitespace()) {
+            pos += 1;
+        }
+        let word_end = norm_word_end(content, pos, end);
+        if word_end > pos {
+            let (sb, eb) = char_range_to_bytes(content, pos, word_end);
+            content.replace_range(sb..eb, "");
+            return (2, true);
+        }
+        return (2, false);
+    }
+    if cmd.starts_with("cc") {
+        for _ in 0..count {
+            let (start, end) = line_col_range(content, line);
+            if start < end {
+                let (sb, eb) = char_range_to_bytes(content, start, end);
+                content.replace_range(sb..eb, "");
+            }
+        }
+        return (2, true);
+    }
+    if cmd.starts_with("dd") {
+        for _ in 0..count {
+            delete_line_at(content, line);
+        }
+        return (2, true);
+    }
+    if cmd.starts_with("dw") {
+        let mut changed = false;
+        for _ in 0..count {
+            let (start, end) = line_col_range(content, line);
+            let mut pos = start;
+            while pos < end && content.chars().nth(pos).is_some_and(|c| c.is_whitespace()) {
+                pos += 1;
+            }
+            let word_end = norm_word_end(content, pos, end);
+            if word_end > pos {
+                let (sb, eb) = char_range_to_bytes(content, pos, word_end);
+                content.replace_range(sb..eb, "");
+                changed = true;
+            }
+        }
+        return (2, changed);
+    }
+    if cmd.starts_with(">>") {
+        for _ in 0..count {
+            indent_line_at(content, line);
+        }
+        return (2, true);
+    }
+    if cmd.starts_with("<<") {
+        let mut changed = false;
+        for _ in 0..count {
+            if unindent_line_at(content, line) {
+                changed = true;
+            }
+        }
+        return (2, changed);
+    }
+    if chars[0] == 'r' && chars.len() > 1 {
+        let replacement = chars[1];
+        let (start, end) = line_col_range(content, line);
+        if start < end {
+            let (sb, eb) = char_range_to_bytes(content, start, start + 1);
+            content.replace_range(sb..eb, &replacement.to_string());
+            return (2, true);
+        }
+        return (2, false);
+    }
+    if chars[0] == 'J' {
+        let mut changed = false;
+        for _ in 0..count {
+            if join_line_with_next(content, line) {
+                changed = true;
+            }
+        }
+        return (1, changed);
+    }
+    if chars[0] == 'o' {
+        let (_, end) = line_col_range(content, line);
+        let (sb, _) = char_range_to_bytes(content, end, end);
+        for _ in 0..count {
+            content.insert_str(sb, "\n");
+        }
+        return (1, true);
+    }
+    if chars[0] == 'O' {
+        let (start, _) = line_col_range(content, line);
+        let (sb, _) = char_range_to_bytes(content, start, start);
+        for _ in 0..count {
+            content.insert_str(sb, "\n");
+        }
+        return (1, true);
+    }
+    if chars[0] == 'x' {
+        let mut changed = false;
+        for _ in 0..count {
+            let (start, end) = line_col_range(content, line);
+            if start < end {
+                let (sb, eb) = char_range_to_bytes(content, start, start + 1);
+                content.replace_range(sb..eb, "");
+                changed = true;
+            }
+        }
+        return (1, changed);
+    }
+    (0, false)
+}
+
+fn indent_line_at(content: &mut String, line: usize) {
+    let (start, _) = line_col_range(content, line);
+    let (sb, _) = char_range_to_bytes(content, start, start);
+    content.insert_str(sb, "    ");
+}
+
+fn unindent_line_at(content: &mut String, line: usize) -> bool {
+    let (start, end) = line_col_range(content, line);
+    let prefix: String = content.chars().skip(start).take(4.min(end - start)).collect();
+    if prefix == "    " {
+        let (sb, eb) = char_range_to_bytes(content, start, start + 4);
+        content.replace_range(sb..eb, "");
+        return true;
+    }
+    if prefix.starts_with('\t') {
+        let (sb, eb) = char_range_to_bytes(content, start, start + 1);
+        content.replace_range(sb..eb, "");
+        return true;
+    }
+    false
 }
 
 fn char_range_to_bytes(content: &str, start: usize, end: usize) -> (usize, usize) {
@@ -259,8 +561,7 @@ pub struct VimCommandResult {
 }
 
 pub fn execute_vim_command(cmd: &str, content: &mut String, cursor: usize) -> VimCommandResult {
-    let trimmed = cmd.trim();
-    if trimmed.is_empty() {
+    if cmd.trim().is_empty() {
         return VimCommandResult {
             status: "Cancelled".to_string(),
             cursor: None,
@@ -269,10 +570,11 @@ pub fn execute_vim_command(cmd: &str, content: &mut String, cursor: usize) -> Vi
             line_numbers: None,
         };
     }
+    let trimmed = cmd.trim_start();
 
     if trimmed == "help" || trimmed == "h" {
         return VimCommandResult {
-            status: "Commands: w q wq [n] [a,b]d g/pat/d g/pat/s/o/n/g v/pat/d %s/pat/rep/g set number|nonumber reg".to_string(),
+            status: "Commands: w q wq [n] [a,b]d g/pat/d g/pat/s/o/n/g g/pat/norm cmd v/pat/d %s/pat/rep/g set number|nonumber reg".to_string(),
             cursor: None,
             content_changed: false,
             request_save: false,
@@ -574,7 +876,7 @@ fn parse_global_command(cmd: &str, content: &mut String, cursor: usize) -> Optio
     let after_sep = &body[sep.len_utf8()..];
     let end = after_sep.find(sep)?;
     let pattern = &after_sep[..end];
-    let action = after_sep[end + sep.len_utf8()..].trim();
+    let action = after_sep[end + sep.len_utf8()..].trim_start();
 
     if action == "d" || action == "delete" {
         return Some(global_delete_lines(content, cursor, pattern, invert));
@@ -583,6 +885,17 @@ fn parse_global_command(cmd: &str, content: &mut String, cursor: usize) -> Optio
     if let Some((old, new, global)) = parse_substitute_action(action) {
         return Some(global_substitute_lines(
             content, cursor, pattern, invert, &old, &new, global,
+        ));
+    }
+
+    if let Some(norm_cmd) = action.strip_prefix("norm") {
+        let norm_cmd = norm_cmd.trim_start();
+        return Some(global_norm_lines(
+            content,
+            cursor,
+            pattern,
+            invert,
+            norm_cmd,
         ));
     }
 
@@ -618,6 +931,53 @@ fn global_delete_lines(
         status: format!("{deleted} line(s) deleted"),
         cursor: Some(cursor.min(content.chars().count())),
         content_changed: deleted > 0,
+        request_save: false,
+        line_numbers: None,
+    }
+}
+
+fn global_norm_lines(
+    content: &mut String,
+    cursor: usize,
+    line_pattern: &str,
+    invert: bool,
+    norm_cmd: &str,
+) -> VimCommandResult {
+    let mut lines = Vec::new();
+    let total = line_count(content);
+    for line in 0..total {
+        if line_matches_pattern(content, line, line_pattern, invert) {
+            lines.push(line);
+        }
+    }
+    if lines.is_empty() {
+        return VimCommandResult {
+            status: "No matching lines".to_string(),
+            cursor: Some(cursor),
+            content_changed: false,
+            request_save: false,
+            line_numbers: None,
+        };
+    }
+
+    let mut applied = 0usize;
+    if norm_cmd.trim() == "dd" {
+        for line in lines.into_iter().rev() {
+            delete_line_at(content, line);
+            applied += 1;
+        }
+    } else {
+        for line in lines.into_iter().rev() {
+            if apply_norm_at_line(content, line, norm_cmd) {
+                applied += 1;
+            }
+        }
+    }
+
+    VimCommandResult {
+        status: format!("norm on {applied} line(s)"),
+        cursor: Some(cursor.min(content.chars().count())),
+        content_changed: applied > 0,
         request_save: false,
         line_numbers: None,
     }
@@ -824,5 +1184,39 @@ mod tests {
         );
         insert_block_column(&mut text, rect, 1, "X");
         assert_eq!(text, "aXb\neXf\niXj");
+    }
+
+    #[test]
+    fn global_norm_inserts_prefix() {
+        let mut text = "foo\nbar\nfoo".to_string();
+        let r = execute_vim_command("g/foo/norm I- ", &mut text, 0);
+        assert!(r.content_changed);
+        assert_eq!(text, "- foo\nbar\n- foo");
+    }
+
+    #[test]
+    fn toggle_case_block_columns() {
+        let mut text = "abcd\nEFgh".to_string();
+        let rect = BlockRect::from_positions(
+            BlockPos { line: 0, col: 1 },
+            BlockPos { line: 1, col: 3 },
+        );
+        toggle_case_block(&mut text, rect);
+        assert_eq!(text, "aBCd\nEfGh");
+    }
+
+    #[test]
+    fn norm_sequence_with_count() {
+        let mut text = "abcdef".to_string();
+        assert!(apply_norm_at_line(&mut text, 0, "3x"));
+        assert_eq!(text, "def");
+    }
+
+    #[test]
+    fn global_norm_delete_word() {
+        let mut text = "hello world\nkeep".to_string();
+        let r = execute_vim_command("g/hello/norm dw", &mut text, 0);
+        assert!(r.content_changed);
+        assert_eq!(text, " world\nkeep");
     }
 }

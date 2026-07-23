@@ -5,6 +5,7 @@ use crate::line_gutter;
 use crate::markdown::{self, PreviewContext};
 use crate::mermaid::MermaidCache;
 use crate::minimap::{self, MinimapAction};
+use crate::editor_highlight;
 use crate::settings::{self, EditorSettings};
 use crate::sync_scroll::{ScrollMetrics, SyncController};
 use eframe::egui;
@@ -504,7 +505,12 @@ impl OmdApp {
     fn render_editor(&mut self, ui: &mut egui::Ui) -> ScrollMetrics {
         let line_height = self.editor_settings.editor_line_height_px();
         let font_id = egui::FontId::monospace(self.editor_settings.editor_font_size);
-        let text_color = ui.visuals().text_color();
+        let highlight_syntax = self.editor_settings.editor_syntax_highlight;
+        let text_color = if highlight_syntax {
+            egui::Color32::TRANSPARENT
+        } else {
+            ui.visuals().text_color()
+        };
         let available_height = ui.available_height();
         let line_kinds = minimap::analyze_lines(&self.content);
         let content_height = line_kinds.len().max(1) as f32 * line_height;
@@ -605,18 +611,53 @@ impl OmdApp {
                                         }
                                     }
 
-                                    let response = egui::TextEdit::multiline(&mut self.content)
-                                        .id_salt(find_replace::EDITOR_ID_SALT)
-                                        .font(font_id.clone())
-                                        .desired_width(f32::INFINITY)
-                                        .lock_focus(true)
-                                        .text_color(text_color)
-                                        .frame(true)
-                                        .show(ui);
+                                    let editor_inner_height = line_count.max(1) as f32 * line_height
+                                        + line_gutter::TEXTEDIT_TOP_PAD * 2.0;
+                                    let editor_width = ui.available_width();
+                                    let (editor_rect, _) = ui.allocate_exact_size(
+                                        egui::vec2(editor_width, editor_inner_height),
+                                        egui::Sense::click(),
+                                    );
 
-                                    self.editor_text_edit_id = Some(response.response.id);
+                                    if highlight_syntax {
+                                        let visuals = ui.visuals().clone();
+                                        let origin = editor_rect.min
+                                            + egui::vec2(
+                                                line_gutter::TEXTEDIT_TOP_PAD,
+                                                line_gutter::TEXTEDIT_TOP_PAD,
+                                            );
+                                        ui.fonts(|fonts| {
+                                            editor_highlight::paint_backdrop_in_rect(
+                                                &ui.painter().with_clip_rect(editor_rect),
+                                                editor_rect,
+                                                origin,
+                                                &self.content,
+                                                &font_id,
+                                                line_height,
+                                                self.dark_mode,
+                                                &visuals,
+                                                &|text, font, color| {
+                                                    fonts.layout_no_wrap(text, font, color)
+                                                },
+                                            );
+                                        });
+                                    }
 
-                                    if response.response.changed() {
+                                    let response = ui.put(
+                                        editor_rect,
+                                        egui::TextEdit::multiline(&mut self.content)
+                                            .id_salt(find_replace::EDITOR_ID_SALT)
+                                            .font(font_id.clone())
+                                            .desired_width(f32::INFINITY)
+                                            .lock_focus(true)
+                                            .text_color(text_color)
+                                            .frame(true)
+                                            .margin(egui::Margin::same(line_gutter::TEXTEDIT_TOP_PAD)),
+                                    );
+
+                                    self.editor_text_edit_id = Some(response.id);
+
+                                    if response.changed() {
                                         self.modified = true;
                                     }
 
@@ -625,7 +666,7 @@ impl OmdApp {
                                     {
                                         let mut state = egui::text_edit::TextEditState::load(
                                             ui.ctx(),
-                                            response.response.id,
+                                            response.id,
                                         )
                                         .unwrap_or_default();
                                         state.cursor.set_char_range(Some(
@@ -634,7 +675,7 @@ impl OmdApp {
                                                 egui::text::CCursor::new(end),
                                             ),
                                         ));
-                                        state.store(ui.ctx(), response.response.id);
+                                        state.store(ui.ctx(), response.id);
                                     }
                                 });
                             })
@@ -731,7 +772,17 @@ impl OmdApp {
                 ui.label(label);
             } else if self.editor_settings.keybinding_mode == KeybindingMode::Emacs {
                 ui.separator();
-                ui.label("Emacs");
+                let label = if let Some(ref isearch) = self.keybinding_state.emacs_isearch {
+                    let dir = if isearch.forward {
+                        "I-search"
+                    } else {
+                        "I-search backward"
+                    };
+                    format!("{dir}: {}", isearch.query)
+                } else {
+                    "Emacs".to_string()
+                };
+                ui.label(label);
             }
 
             if let Some(path) = &self.file_path {
