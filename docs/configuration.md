@@ -24,7 +24,7 @@ channel = "stable"
 | 字段 | 值 | 说明 |
 |------|-----|------|
 | `name` | `omd` | 包名与二进制名 |
-| `version` | `0.1.0` | 语义化版本 |
+| `version` | `0.2.0` | 语义化版本 |
 | `edition` | `2021` | Rust 版本 |
 | `license` | `MIT` | 开源许可证 |
 

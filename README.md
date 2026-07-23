@@ -1,6 +1,6 @@
 # omd
 
-**omd** 是一款使用 Rust 编写的轻量级 Markdown 编辑器，提供**桌面版**、**Web 版**和 **Android 版**。
+**omd** 是一款使用 Rust 编写的轻量级 Markdown 编辑器，提供**桌面版**、**Web 版**和 **Android 版**（当前版本 **v0.2.0**）。
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](rust-toolchain.toml)
@@ -10,6 +10,8 @@
 - 实时 Markdown 预览（图片、表格、任务列表、Mermaid 图表）
 - 深色 / 浅色主题
 - 格式化工具栏与快捷键
+- 查找 / 替换、行号、Minimap、同步滚动、语法高亮
+- Vim / Emacs 可选键位模式
 - 图片插入（URL、本地文件、粘贴、拖拽）
 - 桌面版原生文件管理 / Web 版自动保存
 
