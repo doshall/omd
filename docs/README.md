@@ -44,8 +44,8 @@
 |------|------|
 | [用户指南](user-guide.md) | 功能概览、界面介绍、通用操作 |
 | [桌面版指南](desktop.md) | 安装、菜单、工具栏、快捷键、图片 |
-| [Web 版指南](web.md) | 浏览器运行、自动保存、Mermaid、移动端 | 浏览器用户 |
-| [Android 版指南](android.md) | APK 构建、安装、离线使用 | 手机用户 |
+| [Web 版指南](web.md) | 浏览器运行、自动保存、Mermaid、移动端 |
+| [Android 版指南](android.md) | APK 构建、安装、离线使用 |
 | [Markdown 语法支持](markdown-syntax.md) | 支持的语法、GFM 扩展、Mermaid |
 | [版本功能对比](comparison.md) | 桌面版与 Web 版功能矩阵 |
 | [常见问题](faq.md) | FAQ 与故障排除 |
@@ -60,7 +60,7 @@
 | [配置参考](configuration.md) | Cargo、Trunk、持久化、主题 |
 | [部署指南](deployment.md) | 多平台部署方案 |
 | [安全说明](security.md) | 安全模型与最佳实践 |
-| [路线图](roadmap.md) | 未来规划 |
+| [路线图](roadmap.md) | 功能清单、优先顺序、Minimap 等规划 |
 
 ### 项目根目录
 
