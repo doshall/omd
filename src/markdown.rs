@@ -8,6 +8,8 @@ pub struct PreviewContext<'a> {
     pub dark_mode: bool,
     pub base_path: Option<&'a Path>,
     pub mermaid_cache: &'a mut MermaidCache,
+    pub preview_syntax_highlight: bool,
+    pub preview_font_size: f32,
 }
 
 struct PreviewState<'a> {
@@ -164,18 +166,26 @@ impl<'a> PreviewState<'a> {
                 );
             }
             let font = FontId::new(13.0, FontFamily::Monospace);
-            let lines = syntax_highlight::highlight_lines(&code, lang.as_deref(), self.ctx.dark_mode);
-            for tokens in lines {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 0.0;
-                    if tokens.is_empty() {
-                        ui.label(RichText::new(" ").font(font.clone()));
-                    } else {
-                        for (color, text) in tokens {
-                            ui.label(RichText::new(text).font(font.clone()).color(color));
+            if self.ctx.preview_syntax_highlight {
+                let lines = syntax_highlight::highlight_lines(
+                    &code,
+                    lang.as_deref(),
+                    self.ctx.dark_mode,
+                );
+                for tokens in lines {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        if tokens.is_empty() {
+                            ui.label(RichText::new(" ").font(font.clone()));
+                        } else {
+                            for (color, text) in tokens {
+                                ui.label(RichText::new(text).font(font.clone()).color(color));
+                            }
                         }
-                    }
-                });
+                    });
+                }
+            } else {
+                ui.label(RichText::new(code).font(font));
             }
         });
         ui.add_space(4.0);
@@ -365,6 +375,10 @@ impl<'a> PreviewState<'a> {
 
 /// Render Markdown source into an egui scroll area.
 pub fn render_preview<'a>(ui: &mut Ui, markdown: &str, ctx: &'a mut PreviewContext<'a>) {
+    ui.style_mut().text_styles.insert(
+        egui::TextStyle::Body,
+        egui::FontId::new(ctx.preview_font_size, egui::FontFamily::Proportional),
+    );
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);

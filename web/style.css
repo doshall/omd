@@ -10,6 +10,10 @@
     --preview-code-bg: #f1f3f5;
     --preview-blockquote: #6c757d;
     --shadow: rgba(0, 0, 0, 0.08);
+    --editor-font-size: 14px;
+    --editor-line-height: 1.6;
+    --editor-pad: 12px;
+    --preview-font-size: 15px;
 }
 
 [data-theme="dark"] {
@@ -232,10 +236,10 @@ html, body {
     flex-shrink: 0;
     width: 48px;
     overflow: hidden;
-    padding: 0.75rem 0;
+    padding: var(--editor-pad) 0;
     font-family: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
-    font-size: 14px;
-    line-height: 1.6;
+    font-size: var(--editor-font-size);
+    line-height: var(--editor-line-height);
     text-align: right;
     color: var(--text-muted);
     background: var(--surface);
@@ -245,7 +249,7 @@ html, body {
 
 .line-gutter .line {
     padding-right: 0.5rem;
-    height: 22.4px;
+    height: calc(var(--editor-font-size) * var(--editor-line-height));
 }
 
 .line-gutter .line.active {
@@ -266,7 +270,7 @@ html, body {
     position: absolute;
     left: 0;
     right: 0;
-    height: 22.4px;
+    height: calc(var(--editor-font-size) * var(--editor-line-height));
     background: color-mix(in srgb, var(--accent) 14%, transparent);
     pointer-events: none;
     z-index: 0;
@@ -279,13 +283,13 @@ html, body {
     width: 100%;
     height: 100%;
     min-width: 0;
-    padding: 0.75rem;
+    padding: var(--editor-pad);
     border: none;
     resize: none;
     outline: none;
     font-family: "SF Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
-    font-size: 14px;
-    line-height: 1.6;
+    font-size: var(--editor-font-size);
+    line-height: var(--editor-line-height);
     background: transparent;
     color: var(--text);
 }
@@ -313,6 +317,7 @@ html, body {
     padding: 0.75rem 1rem;
     background: var(--surface);
     line-height: 1.7;
+    font-size: var(--preview-font-size);
     min-height: 0;
     -webkit-overflow-scrolling: touch;
 }
@@ -485,4 +490,82 @@ html, body {
 
 .main.editor-only .divider {
     display: none;
+}
+
+#app.focus-mode .header,
+#app.focus-mode .toolbar,
+#app.focus-mode .find-bar,
+#app.focus-mode .status-bar,
+#app.focus-mode .preview-pane,
+#app.focus-mode .divider,
+#app.focus-mode .view-toggle {
+    display: none !important;
+}
+
+#app.focus-mode .main {
+    flex: 1;
+}
+
+.settings-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 1rem;
+}
+
+.settings-panel {
+    width: min(420px, 100%);
+    max-height: 90vh;
+    overflow-y: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.25rem;
+    box-shadow: 0 8px 32px var(--shadow);
+}
+
+.settings-panel h2 {
+    font-size: 1.1rem;
+    margin-bottom: 0.75rem;
+}
+
+.settings-panel h3 {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    margin: 0.75rem 0 0.5rem;
+}
+
+.settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.35rem 0;
+    font-size: 0.9rem;
+}
+
+.settings-row input[type="range"] {
+    flex: 1;
+    min-width: 120px;
+}
+
+.settings-hint {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.25rem;
+}
+
+.settings-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--border);
 }
