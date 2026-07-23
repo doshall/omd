@@ -19,6 +19,10 @@ pub struct EditorSettings {
     pub vim_show_block_highlight: bool,
     /// Sync `"+` / `"*` registers with the system clipboard (Vim mode only).
     pub vim_use_system_clipboard: bool,
+    /// Periodically save open files to disk when they have unsaved changes.
+    pub auto_save_enabled: bool,
+    /// Seconds of inactivity before auto-save writes to disk.
+    pub auto_save_interval_secs: u32,
 }
 
 impl Default for EditorSettings {
@@ -38,6 +42,8 @@ impl Default for EditorSettings {
             keybinding_mode: KeybindingMode::Standard,
             vim_show_block_highlight: true,
             vim_use_system_clipboard: true,
+            auto_save_enabled: true,
+            auto_save_interval_secs: 30,
         }
     }
 }
@@ -83,6 +89,21 @@ pub fn render_settings_window(ctx: &Context, open: &mut bool, settings: &mut Edi
             ui.add(
                 egui::Slider::new(&mut settings.preview_font_size, 12.0..=22.0)
                     .text("Preview font size"),
+            );
+
+            ui.separator();
+            ui.heading("Files");
+            ui.checkbox(&mut settings.auto_save_enabled, "Auto-save to disk");
+            ui.add_enabled(
+                settings.auto_save_enabled,
+                egui::Slider::new(&mut settings.auto_save_interval_secs, 5..=300)
+                    .logarithmic(true)
+                    .text("Auto-save delay (seconds)"),
+            );
+            ui.label(
+                egui::RichText::new("Only applies to files with a saved path on disk.")
+                    .small()
+                    .weak(),
             );
 
             ui.separator();
