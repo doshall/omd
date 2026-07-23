@@ -2,6 +2,7 @@ use crate::clipboard;
 use crate::find_replace::{self, FindBarState};
 use crate::markdown::{self, PreviewContext};
 use crate::mermaid::MermaidCache;
+use crate::line_gutter;
 use crate::minimap::{self, MinimapAction};
 use eframe::egui;
 use std::path::PathBuf;
@@ -441,6 +442,10 @@ impl OmdApp {
         let available_height = ui.available_height();
         let line_kinds = minimap::analyze_lines(&self.content);
         let content_height = minimap::content_height_from_lines(line_kinds.len());
+        let line_count = line_gutter::line_count(&self.content);
+        let text_edit_id = ui.id().with(find_replace::EDITOR_ID_SALT);
+        let current_line =
+            line_gutter::current_line_from_state(ui.ctx(), text_edit_id, &self.content);
 
         let mut scroll_id = egui::Id::NULL;
         let mut scroll_offset_y = 0.0_f32;
@@ -458,34 +463,47 @@ impl OmdApp {
                             .id_salt("omd_editor_scroll")
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
-                                let response = egui::TextEdit::multiline(&mut self.content)
-                                    .id_salt(find_replace::EDITOR_ID_SALT)
-                                    .font(font_id.clone())
-                                    .desired_width(f32::INFINITY)
-                                    .lock_focus(true)
-                                    .text_color(text_color)
-                                    .show(ui);
+                                let content_width = ui.available_width();
+                                line_gutter::paint_current_line_highlight(
+                                    ui,
+                                    current_line,
+                                    content_width,
+                                    line_gutter::TEXTEDIT_TOP_PAD,
+                                );
 
-                                if response.response.changed() {
-                                    self.modified = true;
-                                }
+                                ui.horizontal_top(|ui| {
+                                    line_gutter::show(ui, line_count, current_line, &font_id);
 
-                                if let Some((start, end)) =
-                                    self.find_bar.pending_selection.take()
-                                {
-                                    let mut state = egui::text_edit::TextEditState::load(
-                                        ui.ctx(),
-                                        response.response.id,
-                                    )
-                                    .unwrap_or_default();
-                                    state.cursor.set_char_range(Some(
-                                        egui::text::CCursorRange::two(
-                                            egui::text::CCursor::new(start),
-                                            egui::text::CCursor::new(end),
-                                        ),
-                                    ));
-                                    state.store(ui.ctx(), response.response.id);
-                                }
+                                    let response = egui::TextEdit::multiline(&mut self.content)
+                                        .id_salt(find_replace::EDITOR_ID_SALT)
+                                        .font(font_id.clone())
+                                        .desired_width(f32::INFINITY)
+                                        .lock_focus(true)
+                                        .text_color(text_color)
+                                        .frame(true)
+                                        .show(ui);
+
+                                    if response.response.changed() {
+                                        self.modified = true;
+                                    }
+
+                                    if let Some((start, end)) =
+                                        self.find_bar.pending_selection.take()
+                                    {
+                                        let mut state = egui::text_edit::TextEditState::load(
+                                            ui.ctx(),
+                                            response.response.id,
+                                        )
+                                        .unwrap_or_default();
+                                        state.cursor.set_char_range(Some(
+                                            egui::text::CCursorRange::two(
+                                                egui::text::CCursor::new(start),
+                                                egui::text::CCursor::new(end),
+                                            ),
+                                        ));
+                                        state.store(ui.ctx(), response.response.id);
+                                    }
+                                });
                             })
                     },
                 )

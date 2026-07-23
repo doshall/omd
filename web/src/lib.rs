@@ -1,9 +1,10 @@
 mod find_replace;
+mod line_gutter;
 mod markdown;
 mod minimap;
 
 use leptos::ev::Event;
-use leptos::html::{Canvas, Input, Textarea};
+use leptos::html::{Canvas, Div, Input, Textarea};
 use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
@@ -275,7 +276,10 @@ fn App() -> impl IntoView {
     let (replace_query, set_replace_query) = signal(String::new());
     let (find_case_sensitive, set_find_case_sensitive) = signal(false);
     let (find_match_index, set_find_match_index) = signal(0usize);
+    let (current_line, set_current_line) = signal(0usize);
+    let (editor_scroll_top, set_editor_scroll_top) = signal(0.0f64);
     let textarea_ref = NodeRef::<Textarea>::new();
+    let line_gutter_ref = NodeRef::<Div>::new();
     let minimap_ref = NodeRef::<Canvas>::new();
     let minimap_drag = RwSignal::new(false);
     let file_input_ref = NodeRef::<Input>::new();
@@ -339,9 +343,46 @@ fn App() -> impl IntoView {
         }
     });
 
+    let update_cursor_line = {
+        let textarea_ref = textarea_ref.clone();
+        let content = content.clone();
+        let set_current_line = set_current_line.clone();
+        move || {
+            if let Some(ta) = textarea_ref.get() {
+                let offset = ta.selection_start().ok().flatten().unwrap_or(0);
+                let line = line_gutter::line_index_at_utf16(&content.get_untracked(), offset);
+                set_current_line.set(line);
+            }
+        }
+    };
+
     let on_editor_scroll = {
         let repaint = repaint_minimap.clone();
-        move |_| repaint()
+        let line_gutter_ref = line_gutter_ref.clone();
+        let textarea_ref = textarea_ref.clone();
+        let set_editor_scroll_top = set_editor_scroll_top.clone();
+        move |_| {
+            if let (Some(gutter), Some(ta)) = (line_gutter_ref.get(), textarea_ref.get()) {
+                gutter.set_scroll_top(ta.scroll_top());
+                set_editor_scroll_top.set(ta.scroll_top() as f64);
+            }
+            repaint();
+        }
+    };
+
+    let on_editor_click = {
+        let update_cursor_line = update_cursor_line.clone();
+        move |_: MouseEvent| update_cursor_line()
+    };
+
+    let on_editor_keyup = {
+        let update_cursor_line = update_cursor_line.clone();
+        move |_: KeyboardEvent| update_cursor_line()
+    };
+
+    let on_editor_select = {
+        let update_cursor_line = update_cursor_line.clone();
+        move |_: Event| update_cursor_line()
     };
 
     let minimap_scroll_at = {
@@ -385,6 +426,7 @@ fn App() -> impl IntoView {
         let find_case_sensitive = find_case_sensitive.clone();
         let textarea_ref = textarea_ref.clone();
         let set_find_match_index = set_find_match_index.clone();
+        let set_current_line = set_current_line.clone();
         move |index: usize| {
             let ranges = find_replace::find_ranges(
                 &content.get_untracked(),
@@ -394,6 +436,12 @@ fn App() -> impl IntoView {
             if let Some(&(start, end)) = ranges.get(index) {
                 if let Some(ta) = textarea_ref.get() {
                     find_replace::select_range(&ta, start, end);
+                    let offset = ta.selection_start().ok().flatten().unwrap_or(0);
+                    let line = line_gutter::line_index_at_utf16(
+                        &content.get_untracked(),
+                        offset,
+                    );
+                    set_current_line.set(line);
                 }
                 set_find_match_index.set(index);
             }
@@ -837,20 +885,58 @@ fn App() -> impl IntoView {
                 <div class="pane editor-pane">
                     <div class="pane-header">"编辑"</div>
                     <div class="editor-with-minimap">
-                        <textarea
-                            node_ref=textarea_ref
-                            prop:value=move || content.get()
-                            on:input=move |ev| {
-                                let el: HtmlTextAreaElement = ev.target().unwrap().unchecked_into();
-                                set_content.set(el.value());
-                            }
-                            on:scroll=on_editor_scroll
-                            on:paste=on_paste
-                            on:drop=on_drop
-                            on:dragover=on_drag_over
-                            placeholder="在此输入 Markdown，可粘贴或拖入图片..."
-                            spellcheck="false"
-                        ></textarea>
+                        <div class="editor-with-gutter">
+                            <div class="line-gutter" node_ref=line_gutter_ref>
+                                {move || {
+                                    let count = line_gutter::line_count(&content.get());
+                                    let active = current_line.get();
+                                    (0..count)
+                                        .map(|line| {
+                                            let class = if line == active {
+                                                "line active"
+                                            } else {
+                                                "line"
+                                            };
+                                            view! {
+                                                <div class=class>{line + 1}</div>
+                                            }
+                                        })
+                                        .collect_view()
+                                }}
+                            </div>
+                            <div class="editor-input-wrap">
+                                <div
+                                    class="current-line-highlight"
+                                    style:top=move || {
+                                        format!(
+                                            "{}px",
+                                            line_gutter::highlight_top_px(
+                                                current_line.get(),
+                                                editor_scroll_top.get(),
+                                            )
+                                        )
+                                    }
+                                ></div>
+                                <textarea
+                                    node_ref=textarea_ref
+                                    prop:value=move || content.get()
+                                    on:input=move |ev| {
+                                        let el: HtmlTextAreaElement = ev.target().unwrap().unchecked_into();
+                                        set_content.set(el.value());
+                                        update_cursor_line();
+                                    }
+                                    on:scroll=on_editor_scroll
+                                    on:click=on_editor_click
+                                    on:keyup=on_editor_keyup
+                                    on:select=on_editor_select
+                                    on:paste=on_paste
+                                    on:drop=on_drop
+                                    on:dragover=on_drag_over
+                                    placeholder="在此输入 Markdown，可粘贴或拖入图片..."
+                                    spellcheck="false"
+                                ></textarea>
+                            </div>
+                        </div>
                         <canvas
                             node_ref=minimap_ref
                             class="editor-minimap"
