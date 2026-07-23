@@ -2,6 +2,7 @@ mod find_replace;
 mod line_gutter;
 mod markdown;
 mod minimap;
+mod sync_scroll;
 
 use leptos::ev::Event;
 use leptos::html::{Canvas, Div, Input, Textarea};
@@ -280,8 +281,10 @@ fn App() -> impl IntoView {
     let (editor_scroll_top, set_editor_scroll_top) = signal(0.0f64);
     let textarea_ref = NodeRef::<Textarea>::new();
     let line_gutter_ref = NodeRef::<Div>::new();
+    let preview_ref = NodeRef::<Div>::new();
     let minimap_ref = NodeRef::<Canvas>::new();
     let minimap_drag = RwSignal::new(false);
+    let scroll_sync_guard = RwSignal::new(false);
     let file_input_ref = NodeRef::<Input>::new();
     let image_input_ref = NodeRef::<Input>::new();
 
@@ -360,11 +363,54 @@ fn App() -> impl IntoView {
         let repaint = repaint_minimap.clone();
         let line_gutter_ref = line_gutter_ref.clone();
         let textarea_ref = textarea_ref.clone();
+        let preview_ref = preview_ref.clone();
+        let view_mode = view_mode.clone();
+        let scroll_sync_guard = scroll_sync_guard.clone();
         let set_editor_scroll_top = set_editor_scroll_top.clone();
         move |_| {
             if let (Some(gutter), Some(ta)) = (line_gutter_ref.get(), textarea_ref.get()) {
                 gutter.set_scroll_top(ta.scroll_top());
                 set_editor_scroll_top.set(ta.scroll_top() as f64);
+            }
+            if !scroll_sync_guard.get_untracked()
+                && view_mode.get_untracked() == ViewMode::Split
+            {
+                if let (Some(ta), Some(preview_el)) = (textarea_ref.get(), preview_ref.get()) {
+                    if let Some(preview) = sync_scroll::as_html_element(&preview_el) {
+                        scroll_sync_guard.set(true);
+                        sync_scroll::sync_editor_to_preview(&ta, &preview);
+                        scroll_sync_guard.set(false);
+                    }
+                }
+            }
+            repaint();
+        }
+    };
+
+    let on_preview_scroll = {
+        let textarea_ref = textarea_ref.clone();
+        let preview_ref = preview_ref.clone();
+        let line_gutter_ref = line_gutter_ref.clone();
+        let view_mode = view_mode.clone();
+        let scroll_sync_guard = scroll_sync_guard.clone();
+        let set_editor_scroll_top = set_editor_scroll_top.clone();
+        let repaint = repaint_minimap.clone();
+        move |_| {
+            if scroll_sync_guard.get_untracked()
+                || view_mode.get_untracked() != ViewMode::Split
+            {
+                return;
+            }
+            if let (Some(ta), Some(preview_el)) = (textarea_ref.get(), preview_ref.get()) {
+                if let Some(preview) = sync_scroll::as_html_element(&preview_el) {
+                    scroll_sync_guard.set(true);
+                    sync_scroll::sync_preview_to_editor(&preview, &ta);
+                    if let Some(gutter) = line_gutter_ref.get() {
+                        gutter.set_scroll_top(ta.scroll_top());
+                    }
+                    set_editor_scroll_top.set(ta.scroll_top() as f64);
+                    scroll_sync_guard.set(false);
+                }
             }
             repaint();
         }
@@ -950,7 +996,12 @@ fn App() -> impl IntoView {
                 <div class="divider"></div>
                 <div class="pane preview-pane">
                     <div class="pane-header">"预览"</div>
-                    <div class="preview-content" inner_html=preview_html></div>
+                    <div
+                        class="preview-content"
+                        node_ref=preview_ref
+                        on:scroll=on_preview_scroll
+                        inner_html=preview_html
+                    ></div>
                 </div>
             </div>
 
