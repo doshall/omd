@@ -51,6 +51,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+      - name: Fetch web assets
+        run: bash scripts/fetch-web-assets.sh
       - name: Install trunk
         run: cargo install trunk --locked
       - name: Build web release
