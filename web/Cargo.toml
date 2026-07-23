@@ -1,0 +1,35 @@
+[package]
+name = "omd-web"
+version = "0.1.0"
+edition = "2021"
+description = "Browser version of omd markdown editor"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+leptos = { version = "0.7", features = ["csr"] }
+pulldown-cmark = { version = "0.12", features = ["html"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+    "Document",
+    "Element",
+    "HtmlElement",
+    "HtmlInputElement",
+    "HtmlTextAreaElement",
+    "Window",
+    "Storage",
+    "Blob",
+    "Url",
+    "BlobPropertyBag",
+    "File",
+    "FileList",
+    "FileReader",
+    "Event",
+    "ProgressEvent",
+] }
+console_error_panic_hook = "0.1"
+gloo-timers = { version = "0.3", features = ["futures"] }

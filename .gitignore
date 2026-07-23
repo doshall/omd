@@ -1,4 +1,6 @@
 /target
+/web/dist
+/web/target
 **/*.rs.bk
 *.pdb
 .DS_Store
