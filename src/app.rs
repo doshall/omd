@@ -6,7 +6,6 @@ use crate::mermaid::MermaidCache;
 use crate::minimap::{self, MinimapAction};
 use crate::settings::{self, EditorSettings};
 use crate::sync_scroll::{ScrollMetrics, SyncController};
-use crate::syntax_highlight;
 use eframe::egui;
 use std::path::PathBuf;
 
