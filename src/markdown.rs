@@ -1,4 +1,5 @@
 use crate::mermaid::MermaidCache;
+use crate::syntax_highlight;
 use egui::{Color32, FontFamily, FontId, RichText, Stroke, Ui};
 use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use std::path::{Path, PathBuf};
@@ -155,14 +156,27 @@ impl<'a> PreviewState<'a> {
             ));
         frame.show(ui, |ui| {
             ui.set_max_width(ui.available_width());
-            if let Some(lang) = lang.filter(|l| !l.is_empty()) {
+            if let Some(lang_name) = lang.as_deref().filter(|l| !l.is_empty()) {
                 ui.label(
-                    RichText::new(lang)
+                    RichText::new(lang_name)
                         .size(11.0)
                         .color(ui.visuals().weak_text_color()),
                 );
             }
-            ui.label(RichText::new(code).font(FontId::new(13.0, FontFamily::Monospace)));
+            let font = FontId::new(13.0, FontFamily::Monospace);
+            let lines = syntax_highlight::highlight_lines(&code, lang.as_deref(), self.ctx.dark_mode);
+            for tokens in lines {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    if tokens.is_empty() {
+                        ui.label(RichText::new(" ").font(font.clone()));
+                    } else {
+                        for (color, text) in tokens {
+                            ui.label(RichText::new(text).font(font.clone()).color(color));
+                        }
+                    }
+                });
+            }
         });
         ui.add_space(4.0);
     }
