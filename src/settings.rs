@@ -105,7 +105,7 @@ pub fn render_settings_window(ctx: &Context, open: &mut bool, settings: &mut Edi
             if settings.keybinding_mode == KeybindingMode::Vim {
                 ui.label(
                     egui::RichText::new(
-                        "Vim: hjkl · count prefix · dd/yy/dw · f/t · . repeat · qa…q · @a macro",
+                        "Vim: hjkl · count · dd/dw · Ctrl+V block · :cmd · \"a reg · qa/@a",
                     )
                     .small()
                     .weak(),

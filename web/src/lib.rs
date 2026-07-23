@@ -1,4 +1,5 @@
 mod find_replace;
+mod vim_ex;
 mod keybindings;
 mod line_gutter;
 mod markdown;
@@ -20,7 +21,7 @@ const STORAGE_VIEW: &str = "omd-web-view";
 const STORAGE_FILENAME: &str = "omd-web-filename";
 
 use settings::EditorSettings;
-use keybindings::{KeybindingMode, KeybindingState};
+use keybindings::{KeybindingMode, KeybindingState, VimMode};
 
 const DEFAULT_CONTENT: &str = r#"# omd Web 功能演示
 
@@ -302,6 +303,7 @@ fn App() -> impl IntoView {
     let scroll_sync_guard = RwSignal::new(false);
     let file_input_ref = NodeRef::<Input>::new();
     let image_input_ref = NodeRef::<Input>::new();
+    let command_input_ref = NodeRef::<Input>::new();
 
     // Auto-save to localStorage
     Effect::new(move |_| {
@@ -360,6 +362,22 @@ fn App() -> impl IntoView {
                 omd_highlight_code();
             }
         });
+    });
+
+    Effect::new({
+        let command_input_ref = command_input_ref.clone();
+        let keybinding_state = keybinding_state.clone();
+        move |_| {
+            if keybinding_state.get().vim_mode == VimMode::Command {
+                let command_input_ref = command_input_ref.clone();
+                spawn_local(async move {
+                    gloo_timers::future::TimeoutFuture::new(0).await;
+                    if let Some(input) = command_input_ref.get() {
+                        let _ = input.focus();
+                    }
+                });
+            }
+        }
     });
 
     let repaint_minimap = {
@@ -480,6 +498,7 @@ fn App() -> impl IntoView {
         let set_undo_hint = set_undo_hint.clone();
         let textarea_ref = textarea_ref.clone();
         let find_open = find_open.clone();
+        let filename = filename.clone();
         move |ev: KeyboardEvent| {
             if ev.key() == "F11" {
                 ev.prevent_default();
@@ -556,6 +575,14 @@ fn App() -> impl IntoView {
             }
             if let Some(hint) = action.hint {
                 set_undo_hint.set(hint);
+            }
+            if let Some(result) = action.command_result {
+                if let Some(show) = result.line_numbers {
+                    set_editor_settings.update(|s| s.show_line_numbers = show);
+                }
+                if result.request_save {
+                    download_file(&text, &filename.get_untracked());
+                }
             }
             set_keybinding_state.set(kb);
 
@@ -973,6 +1000,88 @@ fn App() -> impl IntoView {
                     on:click=move |_| set_view_mode.set(ViewMode::PreviewOnly) title="仅预览">"👁"</button>
             </div>
 
+            {move || (keybinding_state.get().vim_mode == VimMode::Command).then(|| {
+                let set_keybinding_state = set_keybinding_state.clone();
+                let set_content = set_content.clone();
+                let set_editor_settings = set_editor_settings.clone();
+                let set_undo_hint = set_undo_hint.clone();
+                let content = content.clone();
+                let filename = filename.clone();
+                let command_input_ref = command_input_ref.clone();
+                let textarea_ref = textarea_ref.clone();
+                view! {
+                    <div class="command-bar">
+                        <label class="command-field">
+                            ":"
+                            <input
+                                type="text"
+                                class="command-input"
+                                node_ref=command_input_ref
+                                prop:value=move || keybinding_state.get().command_buffer
+                                on:input=move |ev| {
+                                    let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                    set_keybinding_state.update(|kb| {
+                                        kb.command_buffer = el.value();
+                                    });
+                                }
+                                on:keydown=move |ev: KeyboardEvent| {
+                                    if ev.key() == "Enter" {
+                                        ev.prevent_default();
+                                        let mut text = content.get_untracked();
+                                        let mut kb = keybinding_state.get_untracked();
+                                        let start_utf16 = textarea_ref
+                                            .get()
+                                            .and_then(|ta| ta.selection_start().ok().flatten())
+                                            .unwrap_or(0);
+                                        let cursor =
+                                            line_gutter::utf16_to_char_index(&text, start_utf16);
+                                        if let Some(action) =
+                                            keybindings::execute_command(&mut kb, &mut text, cursor)
+                                        {
+                                            if action.content_changed {
+                                                set_content.set(text.clone());
+                                            }
+                                            if let Some(hint) = action.hint {
+                                                set_undo_hint.set(hint);
+                                            }
+                                            if let Some(result) = action.command_result {
+                                                if let Some(show) = result.line_numbers {
+                                                    set_editor_settings
+                                                        .update(|s| s.show_line_numbers = show);
+                                                }
+                                                if result.request_save {
+                                                    download_file(&text, &filename.get_untracked());
+                                                }
+                                            }
+                                            set_keybinding_state.set(kb);
+                                            let ta_ref = textarea_ref.clone();
+                                            let cursor = action.cursor;
+                                            spawn_local(async move {
+                                                gloo_timers::future::TimeoutFuture::new(0).await;
+                                                if let Some(ta) = ta_ref.get() {
+                                                    let value = ta.value();
+                                                    line_gutter::set_char_selection(
+                                                        &ta, &value, cursor, None,
+                                                    );
+                                                }
+                                            });
+                                        }
+                                    }
+                                    if ev.key() == "Escape" {
+                                        ev.prevent_default();
+                                        set_keybinding_state.update(|kb| {
+                                            kb.command_buffer.clear();
+                                            kb.vim_mode = VimMode::Normal;
+                                        });
+                                    }
+                                }
+                                placeholder="w · q · 42 · %s/old/new/g · set number · reg"
+                            />
+                        </label>
+                    </div>
+                }
+            })}
+
             {move || find_open.get().then(|| {
                 let step_find_match = step_find_match.clone();
                 let set_find_open = set_find_open.clone();
@@ -1205,7 +1314,7 @@ fn App() -> impl IntoView {
                                     <option value="emacs">"Emacs"</option>
                                 </select>
                             </label>
-                            <p class="settings-hint">"Vim: hjkl · 数字前缀 · dd/yy/dw · f/t · . 重复 · qa…q · @a 宏 · Emacs: Ctrl+u · Alt+b/f/< /> · 剪切环"</p>
+                            <p class="settings-hint">"Vim: hjkl · dd/yy/dw · Ctrl+V 块选择 · : 命令 · \" 寄存器 · qa…q · @a 宏 · :set number · Emacs: Ctrl+u · Alt+b/f/< /> · 剪切环"</p>
                             <div class="settings-actions">
                                 <button class="btn btn-primary" type="button"
                                     on:click=move |_| set_settings_open.set(false)>"完成"</button>

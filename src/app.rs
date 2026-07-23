@@ -401,6 +401,51 @@ impl OmdApp {
         false
     }
 
+    fn editor_cursor(&self, ctx: &egui::Context) -> usize {
+        if let Some(id) = self.editor_text_edit_id {
+            if let Some(state) = egui::text_edit::TextEditState::load(ctx, id) {
+                if let Some(range) = state.cursor.char_range() {
+                    return range.primary.index;
+                }
+            }
+        }
+        0
+    }
+
+    fn apply_key_action(&mut self, ctx: &egui::Context, action: keybindings::KeyAction) {
+        if action.content_changed {
+            self.modified = true;
+        }
+        if let Some(status) = action.status {
+            self.set_status(status);
+        }
+        if let Some(result) = action.command_result {
+            if result.request_save {
+                self.save_file();
+            }
+            if let Some(show) = result.line_numbers {
+                self.editor_settings.show_line_numbers = show;
+            }
+        }
+        if let Some(id) = self.editor_text_edit_id {
+            if let Some(mut state) = egui::text_edit::TextEditState::load(ctx, id) {
+                let sel = action
+                    .selection
+                    .map(|(a, b)| {
+                        egui::text::CCursorRange::two(
+                            egui::text::CCursor::new(a),
+                            egui::text::CCursor::new(b),
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        egui::text::CCursorRange::one(egui::text::CCursor::new(action.cursor))
+                    });
+                state.cursor.set_char_range(Some(sel));
+                state.store(ctx, id);
+            }
+        }
+    }
+
     fn handle_find_bar_actions(&mut self, actions: find_replace::FindBarOutput) {
         if actions.close {
             self.find_bar.close();
@@ -531,12 +576,7 @@ impl OmdApp {
                                             self.editor_settings.keybinding_mode,
                                             &mut self.keybinding_state,
                                         ) {
-                                            if action.content_changed {
-                                                self.modified = true;
-                                            }
-                                            if let Some(status) = action.status {
-                                                self.set_status(status);
-                                            }
+                                            self.apply_key_action(ui.ctx(), action);
                                         }
                                     }
 
@@ -846,6 +886,23 @@ impl eframe::App for OmdApp {
             egui::TopBottomPanel::top("find_bar").show(ctx, |ui| {
                 let actions = find_replace::render_find_bar(ui, &mut self.find_bar, &self.content);
                 self.handle_find_bar_actions(actions);
+            });
+        }
+
+        if show_chrome
+            && self.editor_settings.keybinding_mode == KeybindingMode::Vim
+            && self.keybinding_state.vim_mode == keybindings::VimMode::Command
+        {
+            let cursor = self.editor_cursor(ctx);
+            egui::TopBottomPanel::top("vim_command_bar").show(ctx, |ui| {
+                if let Some(action) = keybindings::render_vim_command_bar(
+                    ui,
+                    &mut self.keybinding_state,
+                    &mut self.content,
+                    cursor,
+                ) {
+                    self.apply_key_action(ctx, action);
+                }
             });
         }
 

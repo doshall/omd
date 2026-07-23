@@ -1,6 +1,8 @@
 use eframe::egui::{self, Key, Modifiers};
 use std::collections::HashMap;
 
+use crate::vim_ex::{self, BlockPos, BlockRect, RegisterFile, VimCommandResult};
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Deserialize, serde::Serialize)]
 pub enum KeybindingMode {
     #[default]
@@ -25,6 +27,8 @@ pub enum VimMode {
     Normal,
     Insert,
     Visual,
+    VisualBlock,
+    Command,
 }
 
 impl VimMode {
@@ -33,6 +37,8 @@ impl VimMode {
             Self::Normal => "NORMAL",
             Self::Insert => "INSERT",
             Self::Visual => "VISUAL",
+            Self::VisualBlock => "VISUAL BLOCK",
+            Self::Command => "COMMAND",
         }
     }
 }
@@ -47,6 +53,7 @@ enum Pending {
     FindBackward,
     TillForward,
     TillBackward,
+    RegisterSelect,
 }
 
 #[derive(Clone, Debug)]
@@ -67,7 +74,7 @@ pub struct KeybindingState {
     pub vim_mode: VimMode,
     pending: Pending,
     pub count: usize,
-    pub yank_register: String,
+    pub registers: RegisterFile,
     pub kill_ring: Vec<String>,
     last_find: Option<(char, bool, bool)>,
     repeatable: Option<Repeatable>,
@@ -75,6 +82,15 @@ pub struct KeybindingState {
     pub macros: HashMap<char, Vec<String>>,
     pub last_macro: Option<char>,
     emacs_prefix: Option<usize>,
+    pub command_buffer: String,
+    pub block_anchor: Option<BlockPos>,
+    pub block_head: Option<BlockPos>,
+}
+
+impl KeybindingState {
+    pub fn yank_text(&self) -> &str {
+        &self.registers.unnamed
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -82,8 +98,10 @@ pub struct KeyAction {
     pub content_changed: bool,
     pub cursor: usize,
     pub selection: Option<(usize, usize)>,
+    pub block_selection: Option<BlockRect>,
     pub vim_mode: Option<VimMode>,
     pub status: Option<String>,
+    pub command_result: Option<VimCommandResult>,
 }
 
 impl KeyAction {
@@ -92,8 +110,10 @@ impl KeyAction {
             content_changed: false,
             cursor,
             selection: None,
+            block_selection: None,
             vim_mode: None,
             status: None,
+            command_result: None,
         }
     }
 
@@ -102,8 +122,10 @@ impl KeyAction {
             content_changed: false,
             cursor,
             selection: Some(selection),
+            block_selection: None,
             vim_mode: None,
             status: None,
+            command_result: None,
         }
     }
 
@@ -112,8 +134,10 @@ impl KeyAction {
             content_changed: true,
             cursor,
             selection: None,
+            block_selection: None,
             vim_mode: None,
             status: None,
+            command_result: None,
         }
     }
 }
@@ -339,6 +363,16 @@ fn selection_range(cursor: usize, selection: Option<(usize, usize)>) -> (usize, 
     selection.unwrap_or((cursor, cursor))
 }
 
+fn yank_into(state: &mut KeybindingState, text: String) {
+    let reg = state.registers.take_pending().unwrap_or('"');
+    state.registers.yank(Some(reg), text);
+}
+
+fn paste_text(state: &KeybindingState) -> Option<String> {
+    let reg = state.registers.pending.unwrap_or('"');
+    state.registers.get(reg).map(|s| s.to_string())
+}
+
 fn take_count(state: &mut KeybindingState) -> usize {
     let n = if state.count == 0 { 1 } else { state.count };
     state.count = 0;
@@ -540,29 +574,33 @@ fn apply_repeatable(content: &mut String, state: &mut KeybindingState, cursor: u
         }
         Repeatable::DeleteToEol => {
             let end = line_end_char(content, cursor);
-            state.yank_register = kill_region(content, cursor, end);
+            yank_into(state, kill_region(content, cursor, end));
             Some(KeyAction::changed(cursor))
         }
         Repeatable::ChangeLine => {
             let line = line_index(content, cursor);
             let (_, _, text) = line_text(content, line);
-            state.yank_register = text;
+            yank_into(state, text);
             let new_cursor = delete_line(content, line);
             Some(KeyAction {
                 content_changed: true,
                 cursor: new_cursor,
                 selection: None,
+            block_selection: None,
+            command_result: None,
                 vim_mode: Some(VimMode::Insert),
                 status: Some("INSERT".to_string()),
             })
         }
         Repeatable::ChangeWord => {
             let end = word_forward(content, cursor);
-            state.yank_register = kill_region(content, cursor, end);
+            yank_into(state, kill_region(content, cursor, end));
             Some(KeyAction {
                 content_changed: true,
                 cursor,
                 selection: None,
+            block_selection: None,
+            command_result: None,
                 vim_mode: Some(VimMode::Insert),
                 status: Some("INSERT".to_string()),
             })
@@ -593,7 +631,7 @@ fn apply_repeatable(content: &mut String, state: &mut KeybindingState, cursor: u
                 yanked.push_str(&text);
                 yanked.push('\n');
             }
-            state.yank_register = yanked;
+            yank_into(state, yanked);
             Some(KeyAction::cursor_only(cursor))
         }
     }
@@ -731,6 +769,8 @@ pub fn handle_vim(
             content_changed: false,
             cursor,
             selection: None,
+            block_selection: None,
+            command_result: None,
             vim_mode: None,
             status: Some(format!("macro {} stopped", reg.unwrap_or('a'))),
         });
@@ -745,6 +785,8 @@ pub fn handle_vim(
                     content_changed: false,
                     cursor,
                     selection: None,
+            block_selection: None,
+            command_result: None,
                     vim_mode: Some(VimMode::Normal),
                     status: Some("NORMAL".to_string()),
                 });
@@ -754,7 +796,49 @@ pub fn handle_vim(
         VimMode::Visual => {
             return handle_vim_visual(content, state, key, modifiers, cursor, selection);
         }
+        VimMode::VisualBlock => {
+            return handle_vim_visual_block(content, state, key, modifiers, cursor);
+        }
+        VimMode::Command => return None,
         VimMode::Normal => {}
+    }
+
+    if let Pending::RegisterSelect = state.pending {
+        state.pending = Pending::None;
+        if let Some(c) = key_char(key) {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '+' || c == '*' {
+                state.registers.pending = Some(c);
+                return Some(KeyAction::cursor_only(cursor));
+            }
+        }
+    }
+
+    if key == Key::Semicolon && modifiers.shift && state.pending == Pending::None {
+        state.command_buffer.clear();
+        return Some(KeyAction {
+            content_changed: false,
+            cursor,
+            selection: None,
+            block_selection: None,
+            vim_mode: Some(VimMode::Command),
+            status: Some("COMMAND".to_string()),
+            command_result: None,
+        });
+    }
+
+    if modifiers.ctrl && key == Key::V {
+        let pos = vim_ex::pos_to_block_pos(content, cursor);
+        state.block_anchor = Some(pos);
+        state.block_head = Some(pos);
+        return Some(KeyAction {
+            content_changed: false,
+            cursor,
+            selection: None,
+            block_selection: Some(BlockRect::from_positions(pos, pos)),
+            vim_mode: Some(VimMode::VisualBlock),
+            status: Some("VISUAL BLOCK".to_string()),
+            command_result: None,
+        });
     }
 
     // @macro replay (Shift+2 on US keyboard)
@@ -793,6 +877,8 @@ pub fn handle_vim(
                     content_changed: false,
                     cursor,
                     selection: None,
+            block_selection: None,
+            command_result: None,
                     vim_mode: None,
                     status: Some(format!("recording @{c}")),
                 });
@@ -826,7 +912,7 @@ pub fn handle_vim(
             ('d', Key::D, _) => {
                 let line = line_index(content, cursor);
                 let (_, _, text) = line_text(content, line);
-                state.yank_register = text;
+                yank_into(state, text);
                 let new_cursor = delete_lines(content, line, count);
                 state.repeatable = Some(Repeatable::DeleteLines(count));
                 Some(KeyAction::changed(new_cursor))
@@ -839,7 +925,7 @@ pub fn handle_vim(
                     yanked.push_str(&text);
                     yanked.push('\n');
                 }
-                state.yank_register = yanked;
+                yank_into(state, yanked);
                 state.repeatable = Some(Repeatable::YankLines(count));
                 Some(KeyAction::cursor_only(cursor))
             }
@@ -847,7 +933,7 @@ pub fn handle_vim(
                 let line = line_index(content, cursor);
                 for _ in 0..count {
                     let (_, _, text) = line_text(content, line);
-                    state.yank_register = text;
+                    yank_into(state, text);
                     delete_line(content, line);
                 }
                 state.repeatable = Some(Repeatable::ChangeLine);
@@ -855,6 +941,8 @@ pub fn handle_vim(
                     content_changed: true,
                     cursor: line_start(content, cursor),
                     selection: None,
+            block_selection: None,
+            command_result: None,
                     vim_mode: Some(VimMode::Insert),
                     status: Some("INSERT".to_string()),
                 })
@@ -870,7 +958,7 @@ pub fn handle_vim(
                 let mut pos = cursor;
                 for _ in 0..count {
                     let end = word_forward(content, pos);
-                    state.yank_register = kill_region(content, pos, end);
+                    yank_into(state, kill_region(content, pos, end));
                 }
                 state.repeatable = Some(Repeatable::DeleteWord(count));
                 Some(KeyAction::changed(cursor))
@@ -878,26 +966,28 @@ pub fn handle_vim(
             ('c', Key::W, _) => {
                 for _ in 0..count {
                     let end = word_forward(content, cursor);
-                    state.yank_register = kill_region(content, cursor, end);
+                    yank_into(state, kill_region(content, cursor, end));
                 }
                 state.repeatable = Some(Repeatable::ChangeWord);
                 Some(KeyAction {
                     content_changed: true,
                     cursor,
                     selection: None,
+            block_selection: None,
+            command_result: None,
                     vim_mode: Some(VimMode::Insert),
                     status: Some("INSERT".to_string()),
                 })
             }
             ('d', Key::L, _) => {
                 let end = line_end_char(content, cursor);
-                state.yank_register = kill_region(content, cursor, end);
+                yank_into(state, kill_region(content, cursor, end));
                 state.repeatable = Some(Repeatable::DeleteToEol);
                 Some(KeyAction::changed(cursor))
             }
             ('d', Key::Num4, m) if m.shift => {
                 let end = line_end_char(content, cursor);
-                state.yank_register = kill_region(content, cursor, end);
+                yank_into(state, kill_region(content, cursor, end));
                 state.repeatable = Some(Repeatable::DeleteToEol);
                 Some(KeyAction::changed(cursor))
             }
@@ -1033,6 +1123,8 @@ pub fn handle_vim(
                 content_changed: false,
                 cursor,
                 selection: None,
+            block_selection: None,
+            command_result: None,
                 vim_mode: Some(VimMode::Normal),
                 status: Some("NORMAL".to_string()),
             })
@@ -1043,6 +1135,8 @@ pub fn handle_vim(
                 content_changed: false,
                 cursor: line_start(content, cursor),
                 selection: None,
+            block_selection: None,
+            command_result: None,
                 vim_mode: Some(VimMode::Insert),
                 status: Some("INSERT".to_string()),
             })
@@ -1053,6 +1147,8 @@ pub fn handle_vim(
                 content_changed: false,
                 cursor,
                 selection: None,
+            block_selection: None,
+            command_result: None,
                 vim_mode: Some(VimMode::Insert),
                 status: Some("INSERT".to_string()),
             })
@@ -1063,6 +1159,8 @@ pub fn handle_vim(
                 content_changed: false,
                 cursor: line_end_char(content, cursor),
                 selection: None,
+            block_selection: None,
+            command_result: None,
                 vim_mode: Some(VimMode::Insert),
                 status: Some("INSERT".to_string()),
             })
@@ -1078,6 +1176,8 @@ pub fn handle_vim(
                 content_changed: false,
                 cursor: pos,
                 selection: None,
+            block_selection: None,
+            command_result: None,
                 vim_mode: Some(VimMode::Insert),
                 status: Some("INSERT".to_string()),
             })
@@ -1089,6 +1189,8 @@ pub fn handle_vim(
                 content_changed: true,
                 cursor: new_cursor,
                 selection: None,
+            block_selection: None,
+            command_result: None,
                 vim_mode: Some(VimMode::Insert),
                 status: Some("INSERT".to_string()),
             })
@@ -1107,6 +1209,8 @@ pub fn handle_vim(
                 content_changed: true,
                 cursor: new_cursor,
                 selection: None,
+            block_selection: None,
+            command_result: None,
                 vim_mode: Some(VimMode::Insert),
                 status: Some("INSERT".to_string()),
             })
@@ -1117,6 +1221,8 @@ pub fn handle_vim(
                 content_changed: false,
                 cursor,
                 selection: Some((cursor, cursor)),
+                block_selection: None,
+                command_result: None,
                 vim_mode: Some(VimMode::Visual),
                 status: Some("VISUAL".to_string()),
             })
@@ -1157,24 +1263,32 @@ pub fn handle_vim(
             Some(KeyAction::changed(pos))
         }
         Key::P if modifiers.shift => {
-            if state.yank_register.is_empty() {
+            let Some(text) = paste_text(state) else {
+                return Some(KeyAction::cursor_only(cursor));
+            };
+            if text.is_empty() {
                 return Some(KeyAction::cursor_only(cursor));
             }
-            let new_cursor = insert_text(content, cursor, &state.yank_register);
+            let new_cursor = insert_text(content, cursor, &text);
             Some(KeyAction::changed(new_cursor))
         }
         Key::P => {
-            if state.yank_register.is_empty() {
+            let Some(text) = paste_text(state) else {
+                return Some(KeyAction::cursor_only(cursor));
+            };
+            if text.is_empty() {
                 return Some(KeyAction::cursor_only(cursor));
             }
             let line = line_index(content, cursor);
-            let new_cursor = paste_line_below(content, line, &state.yank_register);
+            let new_cursor = paste_line_below(content, line, &text);
             Some(KeyAction::changed(new_cursor))
         }
         Key::U => Some(KeyAction {
             content_changed: false,
             cursor,
             selection: None,
+            block_selection: None,
+            command_result: None,
             vim_mode: None,
             status: Some("Use Ctrl+Z to undo".to_string()),
         }),
@@ -1227,6 +1341,8 @@ fn handle_vim_visual(
                 content_changed: false,
                 cursor: sel_start,
                 selection: None,
+            block_selection: None,
+            command_result: None,
                 vim_mode: Some(VimMode::Normal),
                 status: Some("NORMAL".to_string()),
             })
@@ -1234,30 +1350,219 @@ fn handle_vim_visual(
         Key::Y => {
             let (a, b) = ordered(sel_start, sel_end);
             let (start_b, end_b) = char_range_to_bytes(content, a, b);
-            state.yank_register = content[start_b..end_b].to_string();
+            yank_into(state, content[start_b..end_b].to_string());
             state.pending = Pending::None;
             Some(KeyAction {
                 content_changed: false,
                 cursor: sel_start,
                 selection: None,
+            block_selection: None,
+            command_result: None,
                 vim_mode: Some(VimMode::Normal),
                 status: Some("NORMAL".to_string()),
             })
         }
         Key::D | Key::X => {
             let (a, b) = ordered(sel_start, sel_end);
-            state.yank_register = kill_region(content, a, b);
+            yank_into(state, kill_region(content, a, b));
             state.pending = Pending::None;
             Some(KeyAction {
                 content_changed: true,
                 cursor: sel_start.min(content.chars().count()),
                 selection: None,
+            block_selection: None,
+            command_result: None,
                 vim_mode: Some(VimMode::Normal),
                 status: Some("NORMAL".to_string()),
             })
         }
         _ => None,
     }
+}
+
+fn handle_vim_visual_block(
+    content: &mut String,
+    state: &mut KeybindingState,
+    key: Key,
+    _modifiers: Modifiers,
+    cursor: usize,
+) -> Option<KeyAction> {
+    let anchor = state.block_anchor.unwrap_or_else(|| vim_ex::pos_to_block_pos(content, cursor));
+    let mut head = state.block_head.unwrap_or(anchor);
+
+    match key {
+        Key::H => head.col = head.col.saturating_sub(1),
+        Key::L => head.col += 1,
+        Key::K if head.line > 0 => head.line -= 1,
+        Key::J => head.line += 1,
+        Key::Escape => {
+            state.block_anchor = None;
+            state.block_head = None;
+            return Some(KeyAction {
+                content_changed: false,
+                cursor,
+                selection: None,
+                block_selection: None,
+                vim_mode: Some(VimMode::Normal),
+                status: Some("NORMAL".to_string()),
+                command_result: None,
+            });
+        }
+        Key::Y => {
+            let rect = BlockRect::from_positions(anchor, head);
+            yank_into(state, vim_ex::yank_block(content, rect));
+            state.block_anchor = None;
+            state.block_head = None;
+            return Some(KeyAction {
+                content_changed: false,
+                cursor,
+                selection: None,
+                block_selection: None,
+                vim_mode: Some(VimMode::Normal),
+                status: Some("NORMAL".to_string()),
+                command_result: None,
+            });
+        }
+        Key::D | Key::X => {
+            let rect = BlockRect::from_positions(anchor, head);
+            yank_into(state, vim_ex::yank_block(content, rect));
+            let new_cursor = vim_ex::delete_block(content, rect);
+            state.block_anchor = None;
+            state.block_head = None;
+            return Some(KeyAction {
+                content_changed: true,
+                cursor: new_cursor,
+                selection: None,
+                block_selection: None,
+                vim_mode: Some(VimMode::Normal),
+                status: Some("NORMAL".to_string()),
+                command_result: None,
+            });
+        }
+        _ => {}
+    }
+
+    state.block_head = Some(head);
+    let rect = BlockRect::from_positions(anchor, head);
+    let cursor = vim_ex::block_pos_to_char_index(content, head);
+    Some(KeyAction {
+        content_changed: false,
+        cursor,
+        selection: None,
+        block_selection: Some(rect),
+        vim_mode: Some(VimMode::VisualBlock),
+        status: None,
+        command_result: None,
+    })
+}
+
+pub fn handle_vim_text(state: &mut KeybindingState, text: &str, cursor: usize) -> Option<KeyAction> {
+    if state.vim_mode != VimMode::Normal {
+        return None;
+    }
+    if text == "\"" {
+        state.pending = Pending::RegisterSelect;
+        return Some(KeyAction::cursor_only(cursor));
+    }
+    None
+}
+
+pub fn handle_command_key(
+    state: &mut KeybindingState,
+    key: Key,
+    modifiers: Modifiers,
+    content: &mut String,
+    cursor: usize,
+) -> Option<KeyAction> {
+    if state.vim_mode != VimMode::Command {
+        return None;
+    }
+    match key {
+        Key::Escape => {
+            state.command_buffer.clear();
+            return Some(KeyAction {
+                content_changed: false,
+                cursor,
+                selection: None,
+                block_selection: None,
+                vim_mode: Some(VimMode::Normal),
+                status: Some("NORMAL".to_string()),
+                command_result: None,
+            });
+        }
+        Key::Backspace => {
+            state.command_buffer.pop();
+            return Some(KeyAction::cursor_only(cursor));
+        }
+        Key::Enter => {
+            let cmd = state.command_buffer.clone();
+            state.command_buffer.clear();
+            let result = if cmd.trim() == "reg" || cmd.trim() == "registers" {
+                VimCommandResult {
+                    status: state.registers.format_all(),
+                    cursor: None,
+                    content_changed: false,
+                    request_save: false,
+                    line_numbers: None,
+                }
+            } else {
+                vim_ex::execute_vim_command(&cmd, content, cursor)
+            };
+            let new_cursor = result.cursor.unwrap_or(cursor);
+            return Some(KeyAction {
+                content_changed: result.content_changed,
+                cursor: new_cursor,
+                selection: None,
+                block_selection: None,
+                vim_mode: Some(VimMode::Normal),
+                status: Some(result.status.clone()),
+                command_result: Some(result),
+            });
+        }
+        _ => {
+            if let Some(c) = key_char(key) {
+                if modifiers.shift {
+                    state.command_buffer.push(c.to_ascii_uppercase());
+                } else {
+                    state.command_buffer.push(c);
+                }
+                return Some(KeyAction::cursor_only(cursor));
+            }
+            if let Some(d) = key_digit(key) {
+                state.command_buffer.push(char::from_digit(d as u32, 10).unwrap());
+                return Some(KeyAction::cursor_only(cursor));
+            }
+        }
+    }
+    None
+}
+
+pub fn render_vim_command_bar(
+    ui: &mut egui::Ui,
+    state: &mut KeybindingState,
+    content: &mut String,
+    cursor: usize,
+) -> Option<KeyAction> {
+    if state.vim_mode != VimMode::Command {
+        return None;
+    }
+    let mut action = None;
+    ui.horizontal(|ui| {
+        ui.label(":");
+        let response = ui.add(
+            egui::TextEdit::singleline(&mut state.command_buffer)
+                .desired_width(ui.available_width() - 8.0)
+                .hint_text("w · q · 42 · %s/old/new/g · set number · reg"),
+        );
+        response.request_focus();
+        if ui.input(|i| i.key_pressed(Key::Enter)) {
+            action = handle_command_key(state, Key::Enter, Modifiers::NONE, content, cursor);
+        }
+        if ui.input(|i| i.key_pressed(Key::Escape)) {
+            action = handle_command_key(state, Key::Escape, Modifiers::NONE, content, cursor);
+        }
+    });
+    action
 }
 
 fn ordered(a: usize, b: usize) -> (usize, usize) {
@@ -1364,6 +1669,8 @@ pub fn handle_emacs(
             content_changed: false,
             cursor,
             selection: None,
+            block_selection: None,
+            command_result: None,
             vim_mode: None,
             status: Some("Use Ctrl+Z to undo".to_string()),
         }),
@@ -1381,6 +1688,11 @@ pub fn process_egui_input(
     if mode == KeybindingMode::Standard {
         return None;
     }
+
+    if state.vim_mode == VimMode::Command {
+        return None;
+    }
+
     if !ctx.memory(|m| m.has_focus(text_edit_id)) {
         return None;
     }
@@ -1440,11 +1752,26 @@ pub fn process_egui_input(
                 break;
             }
         }
+        if action.is_none() && mode == KeybindingMode::Vim && state.vim_mode == VimMode::Normal {
+            for event in &input.events {
+                if let egui::Event::Text(text) = event {
+                    if let Some(act) = handle_vim_text(state, text, cursor) {
+                        action = Some(act);
+                        break;
+                    }
+                }
+            }
+        }
     });
 
     if let Some(act) = &action {
         if let Some(vim_mode) = act.vim_mode {
             state.vim_mode = vim_mode;
+        }
+        if let Some(result) = &act.command_result {
+            if result.request_save {
+                // handled by app
+            }
         }
         let sel = act
             .selection
