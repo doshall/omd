@@ -238,9 +238,21 @@ cargo build --release
 
 ### GitHub Releases
 
+推送 `v*` tag 时自动构建三平台桌面二进制与 Web 压缩包并创建 Release。
+
+**补发失败的历史 Release**（如 `v0.2.0` 因缺少 `mermaid.min.js` 构建失败）：
+
+1. 打开 [Actions → Release](https://github.com/doshall/omd/actions/workflows/release.yml)
+2. 点击 **Run workflow**
+3. 输入 tag 名称（如 `v0.2.0`）并运行
+
+`v0.3.0` 及之后的 tag 推送会使用当前 `main` 上的 workflow（含 `scripts/fetch-web-assets.sh`）。
+
+手动发布：
+
 1. 创建 tag：`git tag v0.3.0 && git push origin v0.3.0`
-2. 在 GitHub Releases 页面创建 Release
-3. 上传各平台二进制文件
+2. 等待 Release workflow 完成
+3. 在 [Releases](https://github.com/doshall/omd/releases) 页面查看产物
 
 ### 多平台 CI 示例
 

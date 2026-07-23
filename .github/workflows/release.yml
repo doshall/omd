@@ -4,9 +4,18 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Git tag to build and publish (e.g. v0.2.0)'
+        required: true
+        type: string
 
 permissions:
   contents: write
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 jobs:
   build-desktop:
@@ -24,6 +33,8 @@ jobs:
             target: x86_64-pc-windows-msvc
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
@@ -48,11 +59,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
       - name: Fetch web assets
-        run: bash scripts/fetch-web-assets.sh
+        run: |
+          if [[ -f scripts/fetch-web-assets.sh ]]; then
+            bash scripts/fetch-web-assets.sh
+          else
+            mkdir -p web/assets
+            curl -fsSL -o web/assets/mermaid.min.js \
+              https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js
+          fi
       - name: Install trunk
         run: cargo install trunk --locked
       - name: Build web release
@@ -72,6 +92,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
@@ -84,6 +106,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_TAG }}
           generate_release_notes: true
           files: release-assets/*
         env:
