@@ -23,6 +23,11 @@
 - 桌面版 **File → Export HTML…** 与工具栏 **📤** 按钮
 - Web 版头部 **导出 HTML** 按钮（与「下载」并列）
 
+### 修复
+
+- **CI / Pages / Release**：构建前自动下载 `mermaid.min.js`，修复 Web 构建失败
+- **GitHub Pages**：https://doshall.github.io/omd/ 已上线
+
 ## [0.2.0] - 2026-07-23
 
 ### 新增 — 编辑体验（A 类）

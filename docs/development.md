@@ -66,6 +66,7 @@ omd/
 │       └── markdown.rs     # HTML 转换工具（~100 行）
 │
 ├── docs/                   # 项目文档
+├── scripts/                # 构建脚本（release、android、fetch-web-assets）
 ├── README.md
 ├── CHANGELOG.md
 ├── CONTRIBUTING.md
@@ -93,6 +94,9 @@ cargo fmt -- --check
 ### Web 版
 
 ```bash
+# 首次构建前下载离线 Mermaid（gitignore，CI 亦会执行）
+bash scripts/fetch-web-assets.sh
+
 cd web
 
 # 开发服务器（自带热重载）
@@ -310,6 +314,16 @@ trunk build --release
 - `Cargo.toml`（桌面版）
 - `web/Cargo.toml`（Web 版）
 - `CHANGELOG.md`
+
+### CI 工作流
+
+| 文件 | 触发 | 说明 |
+|------|------|------|
+| `.github/workflows/ci.yml` | PR / push `main` | 桌面/Web 测试与 Web 构建 |
+| `.github/workflows/pages.yml` | push `main`（`web/**`） | 部署到 GitHub Pages |
+| `.github/workflows/release.yml` | tag `v*` | 三平台二进制 + Web 压缩包 |
+
+Web 相关 workflow 构建前均执行 `scripts/fetch-web-assets.sh`。
 
 ## 相关文档
 
