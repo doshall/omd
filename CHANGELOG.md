@@ -5,7 +5,7 @@
 ## [未发布]
 
 ### 新增
-- **Android 版**：WebView 打包 Web 版为 APK，支持离线、文件关联、系统文件选择器
+- **滚动条 Minimap**（桌面 / Web / Android）：编辑区右侧文档缩略导航，点击或拖拽定位
 - **桌面版 Mermaid**：纯 Rust 渲染（mermaid-rs-renderer + resvg）
 - **桌面版图片粘贴**：`Ctrl+V` 剪贴板截图（Base64 嵌入）
 - 一键构建脚本 `scripts/build-android.sh`

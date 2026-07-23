@@ -5,6 +5,7 @@ mod app;
 mod clipboard;
 mod markdown;
 mod mermaid;
+mod minimap;
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {

@@ -24,6 +24,11 @@
 3. [配置参考](configuration.md) — Trunk、localStorage、主题
 4. [安全说明](security.md) — CSP、CDN、XSS
 
+### 我想了解后续规划
+
+1. [路线图](roadmap.md) — 完整功能清单、编辑体验优先顺序、滚动条 Minimap
+2. [版本功能对比](comparison.md) — 三版本现状
+
 ### 我想参与开发
 
 1. [贡献指南](../CONTRIBUTING.md) — 流程与规范

@@ -1,12 +1,13 @@
 mod markdown;
+mod minimap;
 
 use leptos::ev::Event;
-use leptos::html::{Input, Textarea};
+use leptos::html::{Canvas, Input, Textarea};
 use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
-use web_sys::{Blob, BlobPropertyBag, HtmlInputElement, HtmlTextAreaElement};
+use web_sys::{Blob, BlobPropertyBag, HtmlInputElement, HtmlTextAreaElement, MouseEvent};
 
 const STORAGE_CONTENT: &str = "omd-web-content";
 const STORAGE_THEME: &str = "omd-web-theme";
@@ -268,6 +269,8 @@ fn App() -> impl IntoView {
     );
     let (saved_hint, set_saved_hint) = signal(false);
     let textarea_ref = NodeRef::<Textarea>::new();
+    let minimap_ref = NodeRef::<Canvas>::new();
+    let minimap_drag = RwSignal::new(false);
     let file_input_ref = NodeRef::<Input>::new();
     let image_input_ref = NodeRef::<Input>::new();
 
@@ -307,6 +310,67 @@ fn App() -> impl IntoView {
             omd_render_mermaid();
         });
     });
+
+    let repaint_minimap = {
+        let minimap_ref = minimap_ref.clone();
+        let textarea_ref = textarea_ref.clone();
+        let content = content.clone();
+        let dark_mode = dark_mode.clone();
+        move || {
+            if let (Some(canvas), Some(ta)) = (minimap_ref.get(), textarea_ref.get()) {
+                minimap::paint(&canvas, &ta, &content.get_untracked(), dark_mode.get_untracked());
+            }
+        }
+    };
+
+    Effect::new({
+        let repaint = repaint_minimap.clone();
+        move |_| {
+            let _ = content.get();
+            let _ = dark_mode.get();
+            repaint();
+        }
+    });
+
+    let on_editor_scroll = {
+        let repaint = repaint_minimap.clone();
+        move |_| repaint()
+    };
+
+    let minimap_scroll_at = {
+        let minimap_ref = minimap_ref.clone();
+        let textarea_ref = textarea_ref.clone();
+        let repaint = repaint_minimap.clone();
+        move |offset_y: f64| {
+            if let (Some(canvas), Some(ta)) = (minimap_ref.get(), textarea_ref.get()) {
+                minimap::scroll_from_pointer(&canvas, &ta, offset_y);
+                repaint();
+            }
+        }
+    };
+
+    let on_minimap_down = {
+        let minimap_scroll_at = minimap_scroll_at.clone();
+        let minimap_drag = minimap_drag.clone();
+        move |ev: MouseEvent| {
+            minimap_drag.set(true);
+            minimap_scroll_at(ev.offset_y() as f64);
+        }
+    };
+
+    let on_minimap_move = {
+        let minimap_scroll_at = minimap_scroll_at.clone();
+        let minimap_drag = minimap_drag.clone();
+        move |ev: MouseEvent| {
+            if minimap_drag.get_untracked() {
+                minimap_scroll_at(ev.offset_y() as f64);
+            }
+        }
+    };
+
+    let on_minimap_up = move |_: MouseEvent| {
+        minimap_drag.set(false);
+    };
 
     let preview_html = move || markdown::markdown_to_html(&content.get());
 
@@ -556,19 +620,30 @@ fn App() -> impl IntoView {
             <div class=move || format!("main {}", view_mode.get().css_class())>
                 <div class="pane editor-pane">
                     <div class="pane-header">"编辑"</div>
-                    <textarea
-                        node_ref=textarea_ref
-                        prop:value=move || content.get()
-                        on:input=move |ev| {
-                            let el: HtmlTextAreaElement = ev.target().unwrap().unchecked_into();
-                            set_content.set(el.value());
-                        }
-                        on:paste=on_paste
-                        on:drop=on_drop
-                        on:dragover=on_drag_over
-                        placeholder="在此输入 Markdown，可粘贴或拖入图片..."
-                        spellcheck="false"
-                    ></textarea>
+                    <div class="editor-with-minimap">
+                        <textarea
+                            node_ref=textarea_ref
+                            prop:value=move || content.get()
+                            on:input=move |ev| {
+                                let el: HtmlTextAreaElement = ev.target().unwrap().unchecked_into();
+                                set_content.set(el.value());
+                            }
+                            on:scroll=on_editor_scroll
+                            on:paste=on_paste
+                            on:drop=on_drop
+                            on:dragover=on_drag_over
+                            placeholder="在此输入 Markdown，可粘贴或拖入图片..."
+                            spellcheck="false"
+                        ></textarea>
+                        <canvas
+                            node_ref=minimap_ref
+                            class="editor-minimap"
+                            on:mousedown=on_minimap_down
+                            on:mousemove=on_minimap_move
+                            on:mouseup=on_minimap_up
+                            on:mouseleave=on_minimap_up
+                        ></canvas>
+                    </div>
                 </div>
                 <div class="divider"></div>
                 <div class="pane preview-pane">

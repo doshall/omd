@@ -1,6 +1,7 @@
 use crate::clipboard;
 use crate::markdown::{self, PreviewContext};
 use crate::mermaid::MermaidCache;
+use crate::minimap::{self, MinimapAction};
 use eframe::egui;
 use std::path::PathBuf;
 
@@ -376,23 +377,71 @@ impl OmdApp {
     fn render_editor(&mut self, ui: &mut egui::Ui) {
         let font_id = egui::FontId::monospace(14.0);
         let text_color = ui.visuals().text_color();
+        let available_height = ui.available_height();
+        let line_kinds = minimap::analyze_lines(&self.content);
+        let content_height = minimap::content_height_from_lines(line_kinds.len());
 
-        egui::ScrollArea::both()
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                let response = ui.add(
-                    egui::TextEdit::multiline(&mut self.content)
-                        .font(font_id)
-                        .desired_width(f32::INFINITY)
-                        .desired_rows(30)
-                        .text_color(text_color)
-                        .lock_focus(true),
+        let mut scroll_id = egui::Id::NULL;
+        let mut scroll_offset_y = 0.0_f32;
+        let mut viewport_height = available_height;
+
+        ui.horizontal(|ui| {
+            let editor_width = (ui.available_width() - minimap::MINIMAP_WIDTH - 4.0).max(120.0);
+
+            let scroll = ui
+                .allocate_ui_with_layout(
+                    egui::vec2(editor_width, available_height),
+                    egui::Layout::top_down(egui::Align::LEFT),
+                    |ui| {
+                        egui::ScrollArea::vertical()
+                            .id_salt("omd_editor_scroll")
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                let response = egui::TextEdit::multiline(&mut self.content)
+                                    .font(font_id.clone())
+                                    .desired_width(f32::INFINITY)
+                                    .lock_focus(true)
+                                    .text_color(text_color)
+                                    .show(ui);
+
+                                if response.response.changed() {
+                                    self.modified = true;
+                                }
+                            })
+                    },
+                )
+                .inner;
+
+            scroll_id = scroll.id;
+            scroll_offset_y = scroll.state.offset.y;
+            viewport_height = scroll.inner_rect.height();
+
+            let minimap_action = ui
+                .allocate_ui_with_layout(
+                    egui::vec2(minimap::MINIMAP_WIDTH, available_height),
+                    egui::Layout::top_down(egui::Align::LEFT),
+                    |ui| {
+                        minimap::show_minimap(
+                            ui,
+                            &line_kinds,
+                            scroll_offset_y,
+                            viewport_height,
+                            content_height,
+                        )
+                    },
+                )
+                .inner;
+
+            if let MinimapAction::ScrollToRatio(ratio) = minimap_action {
+                minimap::apply_scroll_ratio(
+                    ui.ctx(),
+                    scroll_id,
+                    ratio,
+                    content_height,
+                    viewport_height,
                 );
-
-                if response.changed() {
-                    self.modified = true;
-                }
-            });
+            }
+        });
     }
 
     fn render_preview(&mut self, ui: &mut egui::Ui) {

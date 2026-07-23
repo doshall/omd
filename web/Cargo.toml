@@ -20,6 +20,8 @@ web-sys = { version = "0.3", features = [
     "HtmlElement",
     "HtmlInputElement",
     "HtmlTextAreaElement",
+    "HtmlCanvasElement",
+    "CanvasRenderingContext2d",
     "Window",
     "Storage",
     "Blob",
@@ -34,6 +36,7 @@ web-sys = { version = "0.3", features = [
     "DataTransfer",
     "DataTransferItemList",
     "DataTransferItem",
+    "MouseEvent",
     "DragEvent",
     "ClipboardEvent",
 ] }
