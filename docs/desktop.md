@@ -190,8 +190,8 @@ strip = true        # 剥离调试符号
 
 ## 已知限制
 
-- 不支持 Mermaid 图表渲染
-- 不支持从剪贴板粘贴图片
+- 支持 Mermaid 图表渲染（`mermaid-rs-renderer` + resvg）
+- 支持从剪贴板粘贴图片（`Ctrl+V`，Base64 嵌入）
 - 代码块无语法高亮（预览区显示纯文本）
 - 工具栏格式按钮作用于全文（非精确选区）
 - 不支持 LaTeX 数学公式

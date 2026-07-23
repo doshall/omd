@@ -13,7 +13,9 @@
 - [x] 格式化工具栏
 - [x] 深色/浅色主题
 - [x] 图片支持（URL、本地、Base64、粘贴、拖拽）
-- [x] Mermaid 图表（Web 版）
+- [x] Android 版 APK（WebView + WASM）
+- [x] Mermaid 图表（三版本）
+- [x] 桌面版剪贴板图片粘贴（`Ctrl+V`）
 - [x] 任务列表、表格、删除线
 - [x] 移动端响应式布局（Web 版）
 - [x] 自动保存（Web 版 localStorage）
@@ -26,9 +28,8 @@
 
 | 功能 | 版本 | 优先级 | 说明 |
 |------|------|--------|------|
-| 查找/替换 | 双版本 | 高 | `Ctrl+F` / `Ctrl+H` |
-| 桌面版 Mermaid | 桌面 | 高 | 集成 mermaid 渲染 |
-| 导出 HTML | 双版本 | 中 | 将 Markdown 导出为独立 HTML |
+| 查找/替换 | 三版本 | 高 | `Ctrl+F` / `Ctrl+H` |
+| 导出 HTML | 桌面 / Web | 中 | 将 Markdown 导出为独立 HTML |
 | GitHub Pages CI | Web | 中 | 自动部署流水线 |
 | PWA 支持 | Web | 中 | 可安装到手机主屏幕 |
 | 代码块语法高亮 | 双版本 | 中 | 预览区着色 |
@@ -46,8 +47,7 @@
 | 同步滚动 | 双版本 | 编辑区与预览区联动 |
 | 导出 PDF | 双版本 | 一键导出 PDF |
 | LaTeX 数学公式 | 双版本 | KaTeX / MathJax 集成 |
-| 目录自动生成 | 双版本 | 基于标题生成 TOC |
-| 桌面版粘贴图片 | 桌面 | 剪贴板图片插入 |
+| 目录自动生成 | 三版本 | 基于标题生成 TOC |
 | IndexedDB 存储 | Web | 突破 localStorage 限制 |
 
 ## 长期计划
@@ -89,7 +89,7 @@
 | 版本 | 主题 | 预计内容 |
 |------|------|----------|
 | v0.2.0 | 编辑增强 | 查找替换、语法高亮、导出 HTML |
-| v0.3.0 | 平台完善 | PWA、桌面 Mermaid、GitHub Actions CI |
+| v0.3.0 | 平台完善 | PWA、GitHub Actions CI、Android release 签名 |
 | v0.4.0 | 体验提升 | 多标签页、PDF 导出、LaTeX |
 | v1.0.0 | 稳定版 | API 稳定、完整文档、多平台发布包 |
 

@@ -1,10 +1,18 @@
+use crate::mermaid::MermaidCache;
 use egui::{Color32, FontFamily, FontId, RichText, Stroke, Ui};
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use std::path::{Path, PathBuf};
 
-struct PreviewState {
+pub struct PreviewContext<'a> {
+    pub dark_mode: bool,
+    pub base_path: Option<&'a Path>,
+    pub mermaid_cache: &'a mut MermaidCache,
+}
+
+struct PreviewState<'a> {
     heading_level: HeadingLevel,
     in_code_block: bool,
+    code_block_lang: Option<String>,
     code_buffer: String,
     in_blockquote: bool,
     list_stack: Vec<Option<u64>>,
@@ -23,13 +31,15 @@ struct PreviewState {
     image_url: Option<String>,
     image_alt: String,
     base_path: Option<PathBuf>,
+    ctx: &'a mut PreviewContext<'a>,
 }
 
-impl Default for PreviewState {
-    fn default() -> Self {
+impl<'a> PreviewState<'a> {
+    fn new(ctx: &'a mut PreviewContext<'a>) -> Self {
         Self {
             heading_level: HeadingLevel::H1,
             in_code_block: false,
+            code_block_lang: None,
             code_buffer: String::new(),
             in_blockquote: false,
             list_stack: Vec::new(),
@@ -47,16 +57,9 @@ impl Default for PreviewState {
             inline_buffer: String::new(),
             image_url: None,
             image_alt: String::new(),
-            base_path: None,
+            base_path: ctx.base_path.map(Path::to_path_buf),
+            ctx,
         }
-    }
-}
-
-impl PreviewState {
-    fn with_base_path(base_path: Option<&Path>) -> Self {
-        let mut state = Self::default();
-        state.base_path = base_path.map(Path::to_path_buf);
-        state
     }
 
     fn resolve_image_uri(&self, url: &str) -> String {
@@ -97,6 +100,7 @@ impl PreviewState {
             ui.add_space(6.0);
         });
     }
+
     fn flush_inline(&mut self, ui: &mut Ui) {
         if self.inline_buffer.is_empty() {
             return;
@@ -133,6 +137,36 @@ impl PreviewState {
         }
     }
 
+    fn render_code_block(&mut self, ui: &mut Ui, code: String, lang: Option<String>) {
+        if lang.as_deref() == Some("mermaid") {
+            self.ctx
+                .mermaid_cache
+                .show_diagram(ui, &code, self.ctx.dark_mode);
+            return;
+        }
+
+        let frame = egui::Frame::none()
+            .fill(ui.visuals().code_bg_color)
+            .inner_margin(8.0)
+            .rounding(4.0)
+            .stroke(Stroke::new(
+                1.0_f32,
+                ui.visuals().widgets.noninteractive.bg_stroke.color,
+            ));
+        frame.show(ui, |ui| {
+            ui.set_max_width(ui.available_width());
+            if let Some(lang) = lang.filter(|l| !l.is_empty()) {
+                ui.label(
+                    RichText::new(lang)
+                        .size(11.0)
+                        .color(ui.visuals().weak_text_color()),
+                );
+            }
+            ui.label(RichText::new(code).font(FontId::new(13.0, FontFamily::Monospace)));
+        });
+        ui.add_space(4.0);
+    }
+
     fn handle_event(&mut self, ui: &mut Ui, event: Event<'_>) {
         match event {
             Event::Start(Tag::Heading { level, .. }) => {
@@ -164,28 +198,26 @@ impl PreviewState {
                 self.in_blockquote = false;
                 ui.add_space(4.0);
             }
-            Event::Start(Tag::CodeBlock(_)) => {
+            Event::Start(Tag::CodeBlock(kind)) => {
                 self.in_code_block = true;
                 self.code_buffer.clear();
+                self.code_block_lang = match kind {
+                    CodeBlockKind::Fenced(lang) => {
+                        let lang = lang.to_string();
+                        if lang.is_empty() {
+                            None
+                        } else {
+                            Some(lang)
+                        }
+                    }
+                    CodeBlockKind::Indented => None,
+                };
             }
             Event::End(TagEnd::CodeBlock) => {
                 self.in_code_block = false;
                 let code = std::mem::take(&mut self.code_buffer);
-                let frame = egui::Frame::none()
-                    .fill(ui.visuals().code_bg_color)
-                    .inner_margin(8.0)
-                    .rounding(4.0)
-                    .stroke(Stroke::new(
-                        1.0_f32,
-                        ui.visuals().widgets.noninteractive.bg_stroke.color,
-                    ));
-                frame.show(ui, |ui| {
-                    ui.set_max_width(ui.available_width());
-                    ui.label(
-                        RichText::new(code).font(FontId::new(13.0, FontFamily::Monospace)),
-                    );
-                });
-                ui.add_space(4.0);
+                let lang = self.code_block_lang.take();
+                self.render_code_block(ui, code, lang);
             }
             Event::Start(Tag::List(start)) => {
                 self.list_stack.push(start);
@@ -318,14 +350,14 @@ impl PreviewState {
 }
 
 /// Render Markdown source into an egui scroll area.
-pub fn render_preview(ui: &mut Ui, markdown: &str, base_path: Option<&Path>) {
+pub fn render_preview<'a>(ui: &mut Ui, markdown: &str, ctx: &'a mut PreviewContext<'a>) {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_TASKLISTS);
 
     let parser = Parser::new_ext(markdown, options);
-    let mut state = PreviewState::with_base_path(base_path);
+    let mut state = PreviewState::new(ctx);
 
     for event in parser {
         state.handle_event(ui, event);

@@ -5,7 +5,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange.svg)](rust-toolchain.toml)
 
-## 截图与特性
+## 特性
 
 - 实时 Markdown 预览（图片、表格、任务列表、Mermaid 图表）
 - 深色 / 浅色主题
@@ -20,8 +20,8 @@
 | **目录** | 项目根目录 | `web/` | `android/` |
 | **适用场景** | 本地电脑 | 浏览器 | 手机 APK |
 | **技术栈** | egui / eframe | Leptos / WASM | WebView + WASM |
-| **Mermaid** | ❌ | ✅ | ✅ |
-| **图片粘贴** | ❌ | ✅ | ✅ |
+| **Mermaid** | ✅ | ✅ | ✅ |
+| **图片粘贴** | ✅ | ✅ | ✅ |
 | **离线** | ✅ | 部署后 | ✅ |
 | **自动保存** | 手动 `Ctrl+S` | localStorage | localStorage |
 
@@ -79,17 +79,17 @@ echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 
 ```
 omd/
-├── src/                    # 桌面版源码
-│   ├── main.rs             # 入口
-│   ├── app.rs              # 应用逻辑与 UI
-│   └── markdown.rs         # egui 预览渲染
+├── src/                    # 桌面版（egui）
+│   ├── main.rs
+│   ├── app.rs
+│   ├── markdown.rs
+│   ├── mermaid.rs          # Mermaid 图表渲染
+│   └── clipboard.rs        # 剪贴板图片
 ├── web/                    # Web 版（Leptos + WASM）
 ├── android/                # Android 版（WebView APK）
 ├── scripts/build-android.sh
 ├── docs/                   # 项目文档
 ├── Cargo.toml
-├── CHANGELOG.md
-├── CONTRIBUTING.md
 └── README.md
 ```
 
@@ -99,7 +99,7 @@ omd/
 |------|--------|--------|------------|
 | GUI | [eframe](https://github.com/emilk/egui) / [egui](https://github.com/emilk/egui) | [Leptos](https://leptos.dev/) | Android WebView |
 | Markdown | [pulldown-cmark](https://github.com/raphlinus/pulldown-cmark) | pulldown-cmark (HTML) | 同 Web 版 |
-| 图表 | — | [Mermaid.js](https://mermaid.js.org/) | Mermaid.js（离线打包） |
+| 图表 | mermaid-rs-renderer | [Mermaid.js](https://mermaid.js.org/) | Mermaid.js（离线打包） |
 | 构建 | cargo | [Trunk](https://trunkrs.dev/) | Gradle + `build-android.sh` |
 
 ## 快捷键（桌面版）
@@ -110,6 +110,7 @@ omd/
 | `Ctrl+O` | 打开文件 |
 | `Ctrl+S` | 保存 |
 | `Ctrl+Shift+S` | 另存为 |
+| `Ctrl+V` | 粘贴剪贴板图片 |
 
 ## 贡献
 

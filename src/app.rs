@@ -1,4 +1,6 @@
-use crate::markdown;
+use crate::clipboard;
+use crate::markdown::{self, PreviewContext};
+use crate::mermaid::MermaidCache;
 use eframe::egui;
 use std::path::PathBuf;
 
@@ -42,8 +44,9 @@ const DEFAULT_CONTENT: &str = r#"# omd 桌面版功能演示
 - [x] 实时分栏预览
 - [x] 文件新建 / 打开 / 保存
 - [x] 本地图片插入与预览
+- [x] Mermaid 图表渲染
+- [x] 剪贴板粘贴图片（`Ctrl+V`）
 - [x] 深色 / 浅色主题
-- [ ] 继续探索更多功能…
 
 ---
 
@@ -57,7 +60,17 @@ fn main() {
 
 ---
 
-## 5. 表格
+## 5. Mermaid 图表
+
+```mermaid
+flowchart LR
+    A[编辑] --> B[预览]
+    B --> C[保存]
+```
+
+---
+
+## 6. 表格
 
 | 功能 | 快捷键 / 操作 | 说明 |
 |------|---------------|------|
@@ -66,12 +79,13 @@ fn main() {
 | 保存 | `Ctrl+S` / 💾 | 保存当前文件 |
 | 另存为 | `Ctrl+Shift+S` | 保存到新路径 |
 | 插入图片 | 工具栏 🖼 | 选择本地图片文件 |
+| 粘贴图片 | `Ctrl+V` | 从剪贴板粘贴截图 |
 | 切换主题 | 工具栏 🌙 / ☀️ | 深色 / 浅色模式 |
 | 预览开关 | 工具栏 👁 | 显示 / 隐藏预览区 |
 
 ---
 
-## 6. 图片
+## 7. 图片
 
 ### 网络图片
 ![Rust Logo](https://www.rust-lang.org/static/images/rust-logo-blk.svg)
@@ -80,16 +94,6 @@ fn main() {
 点击工具栏 **🖼**，选择本地图片文件，将自动插入 `![文件名](路径)` 并在预览区渲染。
 
 支持格式：PNG、JPG、GIF、WebP、SVG、BMP
-
----
-
-## 7. 分隔线与状态栏
-
----
-
-底部状态栏实时显示：**行数** · **字数** · **字符数** · 当前文件路径。
-
-窗口标题显示文件名及修改状态（`*` 表示未保存）。
 
 ---
 
@@ -117,6 +121,8 @@ pub struct OmdApp {
     split_ratio: f32,
     status_message: String,
     status_timer: f32,
+    #[serde(skip)]
+    mermaid_cache: MermaidCache,
 }
 
 impl Default for OmdApp {
@@ -130,6 +136,7 @@ impl Default for OmdApp {
             split_ratio: 0.5,
             status_message: String::new(),
             status_timer: 0.0,
+            mermaid_cache: MermaidCache::default(),
         }
     }
 }
@@ -356,6 +363,16 @@ impl OmdApp {
         }
     }
 
+    fn try_paste_image(&mut self) -> bool {
+        if let Some(data_url) = clipboard::clipboard_image_data_url() {
+            self.content.push_str(&format!("\n![image]({data_url})\n"));
+            self.modified = true;
+            self.set_status("Pasted image from clipboard");
+            return true;
+        }
+        false
+    }
+
     fn render_editor(&mut self, ui: &mut egui::Ui) {
         let font_id = egui::FontId::monospace(14.0);
         let text_color = ui.visuals().text_color();
@@ -378,15 +395,20 @@ impl OmdApp {
             });
     }
 
-    fn render_preview(&self, ui: &mut egui::Ui) {
+    fn render_preview(&mut self, ui: &mut egui::Ui) {
         let content = self.content.clone();
         let base_path = self.file_path.as_ref().and_then(|p| p.parent());
+        let mut ctx = PreviewContext {
+            dark_mode: self.dark_mode,
+            base_path,
+            mermaid_cache: &mut self.mermaid_cache,
+        };
         egui::ScrollArea::both()
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.set_max_width(ui.available_width());
                 ui.add_space(8.0);
-                markdown::render_preview(ui, &content, base_path);
+                markdown::render_preview(ui, &content, &mut ctx);
             });
     }
 
@@ -424,6 +446,9 @@ impl eframe::App for OmdApp {
 
         ctx.input(|i| {
             if i.modifiers.command || i.modifiers.ctrl {
+                if i.key_pressed(egui::Key::V) {
+                    self.try_paste_image();
+                }
                 if i.key_pressed(egui::Key::S) {
                     if i.modifiers.shift {
                         self.save_file_as();

@@ -6,11 +6,14 @@
 
 ### 新增
 - **Android 版**：WebView 打包 Web 版为 APK，支持离线、文件关联、系统文件选择器
+- **桌面版 Mermaid**：纯 Rust 渲染（mermaid-rs-renderer + resvg）
+- **桌面版图片粘贴**：`Ctrl+V` 剪贴板截图（Base64 嵌入）
 - 一键构建脚本 `scripts/build-android.sh`
 - Mermaid.js 离线打包（`web/assets/mermaid.min.js`）
 - [Android 版指南](docs/android.md)
 
 ### 变更
+- 合并所有 feature 分支至 `main`，三版本统一维护
 - Web 版 `Trunk.toml` 设置 `public_url = "./"` 支持 Android assets 加载
 - Web 版支持 `omd-web-filename` localStorage 键（Android 打开文件时保留文件名）
 
@@ -42,7 +45,7 @@
 - 默认示例文档展示全部功能
 
 ### 技术栈
-- 桌面：eframe 0.29、egui 0.29、egui_extras、pulldown-cmark 0.12、rfd 0.15
+- 桌面：eframe 0.29、egui 0.29、egui_extras、mermaid-rs-renderer、resvg、arboard、pulldown-cmark 0.12、rfd 0.15
 - Web：Leptos 0.7、pulldown-cmark 0.12、Trunk 0.21、Mermaid.js 11
 
 [未发布]: https://github.com/doshall/omd/compare/v0.1.0...HEAD
