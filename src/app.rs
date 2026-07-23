@@ -1,5 +1,6 @@
 use crate::clipboard;
 use crate::find_replace::{self, FindBarState};
+use crate::keybindings::{self, KeybindingMode, KeybindingState};
 use crate::line_gutter;
 use crate::markdown::{self, PreviewContext};
 use crate::mermaid::MermaidCache;
@@ -137,6 +138,12 @@ pub struct OmdApp {
     find_bar: FindBarState,
     #[serde(skip)]
     sync_scroll: SyncController,
+    #[serde(skip)]
+    keybinding_state: KeybindingState,
+    #[serde(skip)]
+    editor_text_edit_id: Option<egui::Id>,
+    #[serde(skip)]
+    last_keybinding_mode: KeybindingMode,
 }
 
 impl Default for OmdApp {
@@ -155,6 +162,9 @@ impl Default for OmdApp {
             mermaid_cache: MermaidCache::default(),
             find_bar: FindBarState::default(),
             sync_scroll: SyncController::default(),
+            keybinding_state: KeybindingState::default(),
+            editor_text_edit_id: None,
+            last_keybinding_mode: KeybindingMode::Standard,
         }
     }
 }
@@ -503,6 +513,33 @@ impl OmdApp {
                                         );
                                     }
 
+                                    if self.last_keybinding_mode != self.editor_settings.keybinding_mode {
+                                        keybindings::reset_for_mode(
+                                            &mut self.keybinding_state,
+                                            self.editor_settings.keybinding_mode,
+                                        );
+                                        self.last_keybinding_mode = self.editor_settings.keybinding_mode;
+                                    }
+
+                                    if self.editor_settings.keybinding_mode != KeybindingMode::Standard
+                                        && !self.find_bar.open
+                                    {
+                                        if let Some(action) = keybindings::process_egui_input(
+                                            ui.ctx(),
+                                            &mut self.content,
+                                            text_edit_id,
+                                            self.editor_settings.keybinding_mode,
+                                            &mut self.keybinding_state,
+                                        ) {
+                                            if action.content_changed {
+                                                self.modified = true;
+                                            }
+                                            if let Some(status) = action.status {
+                                                self.set_status(status);
+                                            }
+                                        }
+                                    }
+
                                     let response = egui::TextEdit::multiline(&mut self.content)
                                         .id_salt(find_replace::EDITOR_ID_SALT)
                                         .font(font_id.clone())
@@ -511,6 +548,8 @@ impl OmdApp {
                                         .text_color(text_color)
                                         .frame(true)
                                         .show(ui);
+
+                                    self.editor_text_edit_id = Some(response.response.id);
 
                                     if response.response.changed() {
                                         self.modified = true;
@@ -614,6 +653,14 @@ impl OmdApp {
             let chars = self.content.chars().count();
 
             ui.label(format!("Lines: {lines}  Words: {words}  Chars: {chars}"));
+
+            if self.editor_settings.keybinding_mode == KeybindingMode::Vim {
+                ui.separator();
+                ui.label(format!("Vim: {}", self.keybinding_state.vim_mode.label()));
+            } else if self.editor_settings.keybinding_mode == KeybindingMode::Emacs {
+                ui.separator();
+                ui.label("Emacs");
+            }
 
             if let Some(path) = &self.file_path {
                 ui.separator();

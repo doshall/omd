@@ -97,6 +97,7 @@ eframe::NativeOptions {
 | `editor_line_height` | `1.6` | 编辑区行高倍数 |
 | `preview_font_size` | `15.0` | 预览区字号（px） |
 | `show_undo_redo_hint` | `true` | Ctrl+Z / Ctrl+Y 状态栏提示 |
+| `keybinding_mode` | `"standard"` | 键位模式：`standard` / `vim` / `emacs` |
 
 打开方式：**View → Settings…**（`F11` 切换专注模式，`Esc` 退出）
 

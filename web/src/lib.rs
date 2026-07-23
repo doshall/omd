@@ -1,4 +1,5 @@
 mod find_replace;
+mod keybindings;
 mod line_gutter;
 mod markdown;
 mod minimap;
@@ -19,6 +20,7 @@ const STORAGE_VIEW: &str = "omd-web-view";
 const STORAGE_FILENAME: &str = "omd-web-filename";
 
 use settings::EditorSettings;
+use keybindings::{KeybindingMode, KeybindingState};
 
 const DEFAULT_CONTENT: &str = r#"# omd Web 功能演示
 
@@ -277,6 +279,7 @@ fn App() -> impl IntoView {
     let (dark_mode, set_dark_mode) = signal(initial_dark);
     let (view_mode, set_view_mode) = signal(initial_view);
     let (editor_settings, set_editor_settings) = signal(initial_settings);
+    let (keybinding_state, set_keybinding_state) = signal(KeybindingState::default());
     let (settings_open, set_settings_open) = signal(false);
     let (undo_hint, set_undo_hint) = signal(String::new());
     let (filename, set_filename) = signal(
@@ -465,6 +468,105 @@ fn App() -> impl IntoView {
     let on_editor_select = {
         let update_cursor_line = update_cursor_line.clone();
         move |_: Event| update_cursor_line()
+    };
+
+    let on_textarea_keydown = {
+        let content = content.clone();
+        let set_content = set_content.clone();
+        let editor_settings = editor_settings.clone();
+        let keybinding_state = keybinding_state.clone();
+        let set_keybinding_state = set_keybinding_state.clone();
+        let set_editor_settings = set_editor_settings.clone();
+        let set_undo_hint = set_undo_hint.clone();
+        let textarea_ref = textarea_ref.clone();
+        let find_open = find_open.clone();
+        move |ev: KeyboardEvent| {
+            if ev.key() == "F11" {
+                ev.prevent_default();
+                set_editor_settings.update(|s| s.focus_mode = !s.focus_mode);
+            }
+            if editor_settings.get_untracked().focus_mode && ev.key() == "Escape" {
+                set_editor_settings.update(|s| s.focus_mode = false);
+            }
+            if editor_settings.get_untracked().show_undo_redo_hint
+                && (ev.ctrl_key() || ev.meta_key())
+            {
+                if ev.key() == "z" {
+                    set_undo_hint.set(if ev.shift_key() {
+                        "重做".to_string()
+                    } else {
+                        "撤销".to_string()
+                    });
+                } else if ev.key() == "y" {
+                    set_undo_hint.set("重做".to_string());
+                }
+            }
+
+            if find_open.get_untracked() {
+                return;
+            }
+
+            let mode = editor_settings.get_untracked().keybinding_mode;
+            if mode == KeybindingMode::Standard {
+                return;
+            }
+
+            let Some(ta) = textarea_ref.get() else {
+                return;
+            };
+
+            let mut text = content.get_untracked();
+            let start_utf16 = ta.selection_start().ok().flatten().unwrap_or(0);
+            let end_utf16 = ta.selection_end().ok().flatten().unwrap_or(start_utf16);
+            let cursor = line_gutter::utf16_to_char_index(&text, start_utf16);
+            let sel_start =
+                line_gutter::utf16_to_char_index(&text, start_utf16.min(end_utf16));
+            let sel_end =
+                line_gutter::utf16_to_char_index(&text, start_utf16.max(end_utf16));
+            let selection = if start_utf16 != end_utf16 {
+                Some((sel_start, sel_end))
+            } else {
+                None
+            };
+
+            let mut kb = keybinding_state.get_untracked();
+            let Some(action) = keybindings::handle_keydown(
+                &mut text,
+                &mut kb,
+                mode,
+                &ev.key(),
+                ev.ctrl_key(),
+                ev.shift_key(),
+                ev.alt_key(),
+                ev.meta_key(),
+                cursor,
+                selection,
+            ) else {
+                return;
+            };
+
+            if action.consume {
+                ev.prevent_default();
+            }
+            if action.content_changed {
+                set_content.set(text.clone());
+            }
+            if let Some(vim_mode) = action.vim_mode {
+                kb.vim_mode = vim_mode;
+            }
+            set_keybinding_state.set(kb);
+
+            let ta_ref = textarea_ref.clone();
+            let cursor = action.cursor;
+            let selection = action.selection;
+            spawn_local(async move {
+                gloo_timers::future::TimeoutFuture::new(0).await;
+                if let Some(ta) = ta_ref.get() {
+                    let value = ta.value();
+                    line_gutter::set_char_selection(&ta, &value, cursor, selection);
+                }
+            });
+        }
     };
 
     let minimap_scroll_at = {
@@ -967,6 +1069,7 @@ fn App() -> impl IntoView {
 
             {move || settings_open.get().then(|| {
                 let set_editor_settings = set_editor_settings.clone();
+                let set_keybinding_state = set_keybinding_state.clone();
                 let set_settings_open = set_settings_open.clone();
                 view! {
                     <div class="settings-backdrop" on:click=move |_| set_settings_open.set(false)>
@@ -1075,6 +1178,31 @@ fn App() -> impl IntoView {
                                     }
                                 />
                             </label>
+                            <label class="settings-row">
+                                "键位模式"
+                                <select
+                                    prop:value=move || match editor_settings.get().keybinding_mode {
+                                        KeybindingMode::Standard => "standard",
+                                        KeybindingMode::Vim => "vim",
+                                        KeybindingMode::Emacs => "emacs",
+                                    }
+                                    on:change=move |ev| {
+                                        let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                        let mode = match el.value().as_str() {
+                                            "vim" => KeybindingMode::Vim,
+                                            "emacs" => KeybindingMode::Emacs,
+                                            _ => KeybindingMode::Standard,
+                                        };
+                                        set_editor_settings.update(|s| s.keybinding_mode = mode);
+                                        set_keybinding_state.update(|state| keybindings::reset_for_mode(state, mode));
+                                    }
+                                >
+                                    <option value="standard">"标准"</option>
+                                    <option value="vim">"Vim"</option>
+                                    <option value="emacs">"Emacs"</option>
+                                </select>
+                            </label>
+                            <p class="settings-hint">"Vim: hjkl · i/a · dd/yy/p · Emacs: Ctrl+b/f/n/p/a/e/k/y"</p>
                             <div class="settings-actions">
                                 <button class="btn btn-primary" type="button"
                                     on:click=move |_| set_settings_open.set(false)>"完成"</button>
@@ -1135,28 +1263,7 @@ fn App() -> impl IntoView {
                                         set_content.set(el.value());
                                         update_cursor_line();
                                     }
-                                    on:keydown=move |ev: KeyboardEvent| {
-                                        if ev.key() == "F11" {
-                                            ev.prevent_default();
-                                            set_editor_settings.update(|s| s.focus_mode = !s.focus_mode);
-                                        }
-                                        if editor_settings.get_untracked().focus_mode && ev.key() == "Escape" {
-                                            set_editor_settings.update(|s| s.focus_mode = false);
-                                        }
-                                        if editor_settings.get_untracked().show_undo_redo_hint
-                                            && (ev.ctrl_key() || ev.meta_key())
-                                        {
-                                            if ev.key() == "z" {
-                                                set_undo_hint.set(if ev.shift_key() {
-                                                    "重做".to_string()
-                                                } else {
-                                                    "撤销".to_string()
-                                                });
-                                            } else if ev.key() == "y" {
-                                                set_undo_hint.set("重做".to_string());
-                                            }
-                                        }
-                                    }
+                                    on:keydown=on_textarea_keydown
                                     on:scroll=on_editor_scroll
                                     on:click=on_editor_click
                                     on:keyup=on_editor_keyup
@@ -1197,7 +1304,16 @@ fn App() -> impl IntoView {
                 <span>
                     {move || {
                         let (lines, words, chars) = stats();
-                        format!("行 {lines} · 字 {words} · 字符 {chars}")
+                        let mode = editor_settings.get().keybinding_mode;
+                        let mode_label = match mode {
+                            KeybindingMode::Vim => format!(
+                                " · Vim:{}",
+                                keybinding_state.get().vim_mode.label()
+                            ),
+                            KeybindingMode::Emacs => " · Emacs".to_string(),
+                            KeybindingMode::Standard => String::new(),
+                        };
+                        format!("行 {lines} · 字 {words} · 字符 {chars}{mode_label}")
                     }}
                 </span>
                 <span>
