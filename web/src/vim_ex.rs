@@ -139,6 +139,83 @@ pub fn toggle_case_block(content: &mut String, rect: BlockRect) -> usize {
     cursor
 }
 
+pub fn transform_case_block(content: &mut String, rect: BlockRect, uppercase: bool) -> usize {
+    let mut cursor = block_pos_to_char_index(
+        content,
+        BlockPos {
+            line: rect.line_start,
+            col: rect.col_start,
+        },
+    );
+    for line in (rect.line_start..=rect.line_end).rev() {
+        let (start, end) = line_col_range(content, line);
+        let line_len = end.saturating_sub(start);
+        let col_start = rect.col_start.min(line_len);
+        let col_end = rect.col_end.min(line_len);
+        if col_start < col_end {
+            let transformed: String = content
+                .chars()
+                .skip(start + col_start)
+                .take(col_end - col_start)
+                .map(|c| {
+                    if uppercase {
+                        c.to_ascii_uppercase()
+                    } else {
+                        c.to_ascii_lowercase()
+                    }
+                })
+                .collect();
+            let del_start = start + col_start;
+            let del_end = start + col_end;
+            let (sb, eb) = char_range_to_bytes(content, del_start, del_end);
+            content.replace_range(sb..eb, &transformed);
+            cursor = del_start;
+        }
+    }
+    cursor
+}
+
+pub fn paste_block_column(content: &mut String, rect: BlockRect, text: &str, before: bool) -> usize {
+    let col = if before { rect.col_start } else { rect.col_end };
+    let rows: Vec<&str> = text.split('\n').collect();
+    if rows.is_empty() || (rows.len() == 1 && rows[0].is_empty()) {
+        return block_pos_to_char_index(
+            content,
+            BlockPos {
+                line: rect.line_start,
+                col,
+            },
+        );
+    }
+    let mut first_len = 0usize;
+    for (i, line) in (rect.line_start..=rect.line_end).enumerate() {
+        let paste_text = if rows.len() == 1 {
+            rows[0]
+        } else {
+            rows.get(i).copied().unwrap_or("")
+        };
+        if i == 0 {
+            first_len = paste_text.chars().count();
+        }
+        if paste_text.is_empty() {
+            continue;
+        }
+        let (start, end) = line_col_range(content, line);
+        let line_len = end.saturating_sub(start);
+        let insert_col = col.min(line_len);
+        let char_pos = start + insert_col;
+        let (sb, _) = char_range_to_bytes(content, char_pos, char_pos);
+        content.insert_str(sb, paste_text);
+    }
+    block_pos_to_char_index(
+        content,
+        BlockPos {
+            line: rect.line_start,
+            col: col + first_len,
+        },
+    )
+}
+
 pub fn indent_block_lines(content: &mut String, rect: BlockRect) -> usize {
     for line in (rect.line_start..=rect.line_end).rev() {
         indent_line_at(content, line);
@@ -223,13 +300,18 @@ pub fn delete_block_column_char(content: &mut String, rect: BlockRect, col: usiz
 }
 
 /// Apply normal-mode commands at the start of `line` (for `:g/pat/norm`).
-pub fn apply_norm_at_line(content: &mut String, line: usize, cmd: &str) -> bool {
+pub fn apply_norm_at_line(
+    content: &mut String,
+    line: usize,
+    cmd: &str,
+    macro_replay: &mut Option<&mut dyn FnMut(&mut String, usize, char) -> bool>,
+) -> bool {
     let trimmed = cmd.trim_start();
     if trimmed.is_empty() {
         return false;
     }
     if trimmed.starts_with('I') || trimmed.starts_with('A') {
-        return apply_norm_step(content, line, trimmed, 1).1;
+        return apply_norm_step(content, line, trimmed, 1, macro_replay).1;
     }
     let chars: Vec<char> = trimmed.chars().collect();
     let mut pos = 0usize;
@@ -241,7 +323,7 @@ pub fn apply_norm_at_line(content: &mut String, line: usize, cmd: &str) -> bool 
             break;
         }
         let rest: String = chars[pos..].iter().collect();
-        let (consumed, step_changed) = apply_norm_step(content, line, &rest, count);
+        let (consumed, step_changed) = apply_norm_step(content, line, &rest, count, macro_replay);
         if consumed == 0 {
             break;
         }
@@ -301,11 +383,34 @@ fn join_line_with_next(content: &mut String, line: usize) -> bool {
     false
 }
 
-fn apply_norm_step(content: &mut String, line: usize, cmd: &str, count: usize) -> (usize, bool) {
+fn apply_norm_step(
+    content: &mut String,
+    line: usize,
+    cmd: &str,
+    count: usize,
+    macro_replay: &mut Option<&mut dyn FnMut(&mut String, usize, char) -> bool>,
+) -> (usize, bool) {
     if cmd.is_empty() {
         return (0, false);
     }
     let chars: Vec<char> = cmd.chars().collect();
+    if chars[0] == '@' && chars.len() >= 2 {
+        let reg = chars[1];
+        if let Some(replay) = macro_replay.as_deref_mut() {
+            let pos = block_pos_to_char_index(
+                content,
+                BlockPos { line, col: 0 },
+            );
+            let mut changed = false;
+            for _ in 0..count {
+                if replay(content, pos, reg) {
+                    changed = true;
+                }
+            }
+            return (2, changed);
+        }
+        return (2, false);
+    }
     if chars[0] == 'I' {
         let text: String = chars[1..].iter().collect();
         let (start, _) = line_col_range(content, line);
@@ -561,6 +666,16 @@ pub struct VimCommandResult {
 }
 
 pub fn execute_vim_command(cmd: &str, content: &mut String, cursor: usize) -> VimCommandResult {
+    let mut none: Option<&mut dyn FnMut(&mut String, usize, char) -> bool> = None;
+    execute_vim_command_ctx(cmd, content, cursor, &mut none)
+}
+
+pub fn execute_vim_command_ctx(
+    cmd: &str,
+    content: &mut String,
+    cursor: usize,
+    macro_replay: &mut Option<&mut dyn FnMut(&mut String, usize, char) -> bool>,
+) -> VimCommandResult {
     if cmd.trim().is_empty() {
         return VimCommandResult {
             status: "Cancelled".to_string(),
@@ -582,7 +697,7 @@ pub fn execute_vim_command(cmd: &str, content: &mut String, cursor: usize) -> Vi
         };
     }
 
-    if let Some(result) = parse_global_command(trimmed, content, cursor) {
+    if let Some(result) = parse_global_command(trimmed, content, cursor, macro_replay) {
         return result;
     }
 
@@ -857,7 +972,12 @@ fn delete_line_at(content: &mut String, line: usize) -> usize {
     cursor
 }
 
-fn parse_global_command(cmd: &str, content: &mut String, cursor: usize) -> Option<VimCommandResult> {
+fn parse_global_command(
+    cmd: &str,
+    content: &mut String,
+    cursor: usize,
+    macro_replay: &mut Option<&mut dyn FnMut(&mut String, usize, char) -> bool>,
+) -> Option<VimCommandResult> {
     let invert = cmd.starts_with("v/") || cmd.starts_with("g!");
     let body = if let Some(rest) = cmd.strip_prefix("g!") {
         rest
@@ -896,6 +1016,7 @@ fn parse_global_command(cmd: &str, content: &mut String, cursor: usize) -> Optio
             pattern,
             invert,
             norm_cmd,
+            macro_replay,
         ));
     }
 
@@ -942,6 +1063,7 @@ fn global_norm_lines(
     line_pattern: &str,
     invert: bool,
     norm_cmd: &str,
+    macro_replay: &mut Option<&mut dyn FnMut(&mut String, usize, char) -> bool>,
 ) -> VimCommandResult {
     let mut lines = Vec::new();
     let total = line_count(content);
@@ -968,7 +1090,7 @@ fn global_norm_lines(
         }
     } else {
         for line in lines.into_iter().rev() {
-            if apply_norm_at_line(content, line, norm_cmd) {
+            if apply_norm_at_line(content, line, norm_cmd, macro_replay) {
                 applied += 1;
             }
         }
@@ -1208,7 +1330,7 @@ mod tests {
     #[test]
     fn norm_sequence_with_count() {
         let mut text = "abcdef".to_string();
-        assert!(apply_norm_at_line(&mut text, 0, "3x"));
+        assert!(apply_norm_at_line(&mut text, 0, "3x", &mut None));
         assert_eq!(text, "def");
     }
 
@@ -1218,5 +1340,27 @@ mod tests {
         let r = execute_vim_command("g/hello/norm dw", &mut text, 0);
         assert!(r.content_changed);
         assert_eq!(text, " world\nkeep");
+    }
+
+    #[test]
+    fn paste_block_column_after_selection() {
+        let mut text = "a\nb\nc".to_string();
+        let rect = BlockRect::from_positions(
+            BlockPos { line: 0, col: 1 },
+            BlockPos { line: 2, col: 1 },
+        );
+        paste_block_column(&mut text, rect, "X\nY\nZ", false);
+        assert_eq!(text, "aX\nbY\ncZ");
+    }
+
+    #[test]
+    fn transform_case_block_uppercase() {
+        let mut text = "abcd\nefgh".to_string();
+        let rect = BlockRect::from_positions(
+            BlockPos { line: 0, col: 1 },
+            BlockPos { line: 1, col: 2 },
+        );
+        transform_case_block(&mut text, rect, true);
+        assert_eq!(text, "aBcd\neFgh");
     }
 }

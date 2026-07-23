@@ -54,6 +54,35 @@ pub fn paint_block_selection(
     }
 }
 
+pub fn paint_isearch_matches(
+    ui: &Ui,
+    content: &str,
+    matches: &[(usize, usize)],
+    current_cursor: usize,
+    gutter_width: f32,
+    char_width: f32,
+    top_pad: f32,
+    line_height: f32,
+    left_pad: f32,
+) {
+    let dim = egui::Color32::from_rgb(230, 180, 0).gamma_multiply(0.35);
+    let active = ui.visuals().selection.bg_fill.gamma_multiply(0.75);
+    for (start, end) in matches {
+        let start_pos = crate::vim_ex::pos_to_block_pos(content, *start);
+        let line = start_pos.line;
+        let y = top_pad + line as f32 * line_height;
+        let x = gutter_width + left_pad + start_pos.col as f32 * char_width;
+        let w = end.saturating_sub(*start).max(1) as f32 * char_width;
+        let is_current = *start == current_cursor;
+        let block_rect = egui::Rect::from_min_size(
+            egui::pos2(ui.min_rect().left() + x, ui.min_rect().top() + y),
+            egui::vec2(w, line_height),
+        );
+        ui.painter()
+            .rect_filled(block_rect, 0.0, if is_current { active } else { dim });
+    }
+}
+
 pub fn paint_current_line_highlight(
     ui: &Ui,
     current_line: usize,
