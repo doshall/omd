@@ -162,6 +162,98 @@ pub fn delete_block_column_char(content: &mut String, rect: BlockRect, col: usiz
     )
 }
 
+/// Apply a single normal-mode command at the start of `line` (for `:g/pat/norm`).
+pub fn apply_norm_at_line(content: &mut String, line: usize, cmd: &str) -> bool {
+    let trimmed = cmd.trim_start();
+    if trimmed.is_empty() {
+        return false;
+    }
+    if trimmed == "dd" {
+        delete_line_at(content, line);
+        return true;
+    }
+    if trimmed == ">>" {
+        indent_line_at(content, line);
+        return true;
+    }
+    if trimmed == "<<" {
+        return unindent_line_at(content, line);
+    }
+    if trimmed == "x" {
+        let (start, end) = line_col_range(content, line);
+        if start < end {
+            let (sb, eb) = char_range_to_bytes(content, start, start + 1);
+            content.replace_range(sb..eb, "");
+            return true;
+        }
+        return false;
+    }
+    if trimmed.starts_with('I') {
+        let text: String = trimmed.chars().skip(1).collect();
+        let (start, _) = line_col_range(content, line);
+        let (sb, _) = char_range_to_bytes(content, start, start);
+        content.insert_str(sb, &text);
+        return true;
+    }
+    if trimmed.starts_with('A') {
+        let text: String = trimmed.chars().skip(1).collect();
+        let (_, end) = line_col_range(content, line);
+        let (sb, _) = char_range_to_bytes(content, end, end);
+        content.insert_str(sb, &text);
+        return true;
+    }
+    if trimmed == "dw" {
+        let (start, end) = line_col_range(content, line);
+        let mut pos = start;
+        while pos < end && content.chars().nth(pos).is_some_and(|c| c.is_whitespace()) {
+            pos += 1;
+        }
+        let mut word_end = pos;
+        if let Some(ch) = content.chars().nth(pos) {
+            if ch.is_alphanumeric() || ch == '_' {
+                while word_end < end {
+                    let c = content.chars().nth(word_end).unwrap();
+                    if !c.is_alphanumeric() && c != '_' {
+                        break;
+                    }
+                    word_end += 1;
+                }
+            } else {
+                word_end = pos + 1;
+            }
+        }
+        if word_end > pos {
+            let (sb, eb) = char_range_to_bytes(content, pos, word_end);
+            content.replace_range(sb..eb, "");
+            return true;
+        }
+        return false;
+    }
+    false
+}
+
+fn indent_line_at(content: &mut String, line: usize) {
+    let (start, _) = line_col_range(content, line);
+    let (sb, _) = char_range_to_bytes(content, start, start);
+    content.insert_str(sb, "    ");
+}
+
+fn unindent_line_at(content: &mut String, line: usize) -> bool {
+    let (start, end) = line_col_range(content, line);
+    let prefix: String = content.chars().skip(start).take(4.min(end - start)).collect();
+    if prefix == "    " {
+        let (sb, eb) = char_range_to_bytes(content, start, start + 4);
+        content.replace_range(sb..eb, "");
+        return true;
+    }
+    if prefix.starts_with('\t') {
+        let (sb, eb) = char_range_to_bytes(content, start, start + 1);
+        content.replace_range(sb..eb, "");
+        return true;
+    }
+    false
+}
+
 fn char_range_to_bytes(content: &str, start: usize, end: usize) -> (usize, usize) {
     let sb = content
         .char_indices()
@@ -259,8 +351,7 @@ pub struct VimCommandResult {
 }
 
 pub fn execute_vim_command(cmd: &str, content: &mut String, cursor: usize) -> VimCommandResult {
-    let trimmed = cmd.trim();
-    if trimmed.is_empty() {
+    if cmd.trim().is_empty() {
         return VimCommandResult {
             status: "Cancelled".to_string(),
             cursor: None,
@@ -269,10 +360,11 @@ pub fn execute_vim_command(cmd: &str, content: &mut String, cursor: usize) -> Vi
             line_numbers: None,
         };
     }
+    let trimmed = cmd.trim_start();
 
     if trimmed == "help" || trimmed == "h" {
         return VimCommandResult {
-            status: "Commands: w q wq [n] [a,b]d g/pat/d g/pat/s/o/n/g v/pat/d %s/pat/rep/g set number|nonumber reg".to_string(),
+            status: "Commands: w q wq [n] [a,b]d g/pat/d g/pat/s/o/n/g g/pat/norm cmd v/pat/d %s/pat/rep/g set number|nonumber reg".to_string(),
             cursor: None,
             content_changed: false,
             request_save: false,
@@ -574,7 +666,7 @@ fn parse_global_command(cmd: &str, content: &mut String, cursor: usize) -> Optio
     let after_sep = &body[sep.len_utf8()..];
     let end = after_sep.find(sep)?;
     let pattern = &after_sep[..end];
-    let action = after_sep[end + sep.len_utf8()..].trim();
+    let action = after_sep[end + sep.len_utf8()..].trim_start();
 
     if action == "d" || action == "delete" {
         return Some(global_delete_lines(content, cursor, pattern, invert));
@@ -583,6 +675,17 @@ fn parse_global_command(cmd: &str, content: &mut String, cursor: usize) -> Optio
     if let Some((old, new, global)) = parse_substitute_action(action) {
         return Some(global_substitute_lines(
             content, cursor, pattern, invert, &old, &new, global,
+        ));
+    }
+
+    if let Some(norm_cmd) = action.strip_prefix("norm") {
+        let norm_cmd = norm_cmd.trim_start();
+        return Some(global_norm_lines(
+            content,
+            cursor,
+            pattern,
+            invert,
+            norm_cmd,
         ));
     }
 
@@ -618,6 +721,53 @@ fn global_delete_lines(
         status: format!("{deleted} line(s) deleted"),
         cursor: Some(cursor.min(content.chars().count())),
         content_changed: deleted > 0,
+        request_save: false,
+        line_numbers: None,
+    }
+}
+
+fn global_norm_lines(
+    content: &mut String,
+    cursor: usize,
+    line_pattern: &str,
+    invert: bool,
+    norm_cmd: &str,
+) -> VimCommandResult {
+    let mut lines = Vec::new();
+    let total = line_count(content);
+    for line in 0..total {
+        if line_matches_pattern(content, line, line_pattern, invert) {
+            lines.push(line);
+        }
+    }
+    if lines.is_empty() {
+        return VimCommandResult {
+            status: "No matching lines".to_string(),
+            cursor: Some(cursor),
+            content_changed: false,
+            request_save: false,
+            line_numbers: None,
+        };
+    }
+
+    let mut applied = 0usize;
+    if norm_cmd.trim() == "dd" {
+        for line in lines.into_iter().rev() {
+            delete_line_at(content, line);
+            applied += 1;
+        }
+    } else {
+        for line in lines.into_iter().rev() {
+            if apply_norm_at_line(content, line, norm_cmd) {
+                applied += 1;
+            }
+        }
+    }
+
+    VimCommandResult {
+        status: format!("norm on {applied} line(s)"),
+        cursor: Some(cursor.min(content.chars().count())),
+        content_changed: applied > 0,
         request_save: false,
         line_numbers: None,
     }
@@ -824,5 +974,13 @@ mod tests {
         );
         insert_block_column(&mut text, rect, 1, "X");
         assert_eq!(text, "aXb\neXf\niXj");
+    }
+
+    #[test]
+    fn global_norm_inserts_prefix() {
+        let mut text = "foo\nbar\nfoo".to_string();
+        let r = execute_vim_command("g/foo/norm I- ", &mut text, 0);
+        assert!(r.content_changed);
+        assert_eq!(text, "- foo\nbar\n- foo");
     }
 }

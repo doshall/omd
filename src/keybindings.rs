@@ -90,6 +90,14 @@ pub struct KeybindingState {
     /// Visual Block insert: `(rect, insert_column)`.
     pub block_insert: Option<(BlockRect, usize)>,
     pub emacs_mark: Option<usize>,
+    pub emacs_isearch: Option<EmacsIsearch>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct EmacsIsearch {
+    pub query: String,
+    pub forward: bool,
+    pub anchor: usize,
 }
 
 impl KeybindingState {
@@ -413,6 +421,236 @@ fn transpose_chars(content: &mut String, cursor: usize) -> usize {
     swapped.swap(a, b);
     *content = swapped.into_iter().collect();
     cursor
+}
+
+fn chars_match_at(content: &str, start: usize, query: &str) -> bool {
+    content
+        .chars()
+        .skip(start)
+        .take(query.chars().count())
+        .eq(query.chars())
+}
+
+fn isearch_find(content: &str, query: &str, from: usize, forward: bool) -> Option<usize> {
+    if query.is_empty() {
+        return None;
+    }
+    let q_len = query.chars().count();
+    let total = content.chars().count();
+    if q_len == 0 || total < q_len {
+        return None;
+    }
+    let max_start = total.saturating_sub(q_len);
+    if forward {
+        for i in from..=max_start {
+            if chars_match_at(content, i, query) {
+                return Some(i);
+            }
+        }
+        for i in 0..from.min(max_start + 1) {
+            if chars_match_at(content, i, query) {
+                return Some(i);
+            }
+        }
+    } else {
+        for i in (0..=from.min(max_start)).rev() {
+            if chars_match_at(content, i, query) {
+                return Some(i);
+            }
+        }
+        for i in (from..=max_start).rev() {
+            if chars_match_at(content, i, query) {
+                return Some(i);
+            }
+        }
+    }
+    None
+}
+
+fn isearch_status(query: &str, forward: bool) -> String {
+    let dir = if forward { "I-search" } else { "I-search backward" };
+    format!("{dir}: {query}")
+}
+
+pub fn handle_emacs_isearch(
+    content: &str,
+    state: &mut KeybindingState,
+    key: Key,
+    modifiers: Modifiers,
+    cursor: usize,
+    text: Option<&str>,
+) -> Option<KeyAction> {
+    let ctrl = modifiers.ctrl || modifiers.command;
+
+    if let Some(text) = text.filter(|t| !t.is_empty()) {
+        if state.emacs_isearch.is_some() {
+            let isearch = state.emacs_isearch.get_or_insert(EmacsIsearch {
+                query: String::new(),
+                forward: true,
+                anchor: cursor,
+            });
+            isearch.query.push_str(text);
+            let forward = isearch.forward;
+            let query = isearch.query.clone();
+            let anchor = isearch.anchor;
+            let from = if forward { anchor } else { cursor };
+            let new_cursor = isearch_find(content, &query, from, forward).unwrap_or(cursor);
+            return Some(KeyAction {
+                content_changed: false,
+                cursor: new_cursor,
+                selection: None,
+                block_selection: None,
+                vim_mode: None,
+                status: Some(isearch_status(&query, forward)),
+                command_result: None,
+            });
+        }
+        return None;
+    }
+
+    if let Some(mut isearch) = state.emacs_isearch.take() {
+        match key {
+            Key::Escape => {
+                state.emacs_isearch = None;
+                return Some(KeyAction {
+                    content_changed: false,
+                    cursor: isearch.anchor,
+                    selection: None,
+                    block_selection: None,
+                    vim_mode: None,
+                    status: Some("Quit".to_string()),
+                    command_result: None,
+                });
+            }
+            Key::G if ctrl => {
+                state.emacs_isearch = None;
+                return Some(KeyAction {
+                    content_changed: false,
+                    cursor: isearch.anchor,
+                    selection: None,
+                    block_selection: None,
+                    vim_mode: None,
+                    status: Some("Quit".to_string()),
+                    command_result: None,
+                });
+            }
+            Key::Enter => {
+                return Some(KeyAction {
+                    content_changed: false,
+                    cursor,
+                    selection: None,
+                    block_selection: None,
+                    vim_mode: None,
+                    status: None,
+                    command_result: None,
+                });
+            }
+            Key::Backspace => {
+                isearch.query.pop();
+                if isearch.query.is_empty() {
+                    let forward = isearch.forward;
+                    let anchor = isearch.anchor;
+                    state.emacs_isearch = Some(isearch);
+                    return Some(KeyAction {
+                        content_changed: false,
+                        cursor: anchor,
+                        selection: None,
+                        block_selection: None,
+                        vim_mode: None,
+                        status: Some(isearch_status("", forward)),
+                        command_result: None,
+                    });
+                }
+                let forward = isearch.forward;
+                let query = isearch.query.clone();
+                let anchor = isearch.anchor;
+                let new_cursor =
+                    isearch_find(content, &query, anchor, forward).unwrap_or(isearch.anchor);
+                state.emacs_isearch = Some(isearch);
+                return Some(KeyAction {
+                    content_changed: false,
+                    cursor: new_cursor,
+                    selection: None,
+                    block_selection: None,
+                    vim_mode: None,
+                    status: Some(isearch_status(&query, forward)),
+                    command_result: None,
+                });
+            }
+            Key::S if ctrl => {
+                isearch.forward = true;
+                let query = isearch.query.clone();
+                let from = cursor.saturating_add(1);
+                let new_cursor = isearch_find(content, &query, from, true).unwrap_or(cursor);
+                state.emacs_isearch = Some(isearch);
+                return Some(KeyAction {
+                    content_changed: false,
+                    cursor: new_cursor,
+                    selection: None,
+                    block_selection: None,
+                    vim_mode: None,
+                    status: Some(isearch_status(&query, true)),
+                    command_result: None,
+                });
+            }
+            Key::R if ctrl => {
+                isearch.forward = false;
+                let query = isearch.query.clone();
+                let from = cursor.saturating_sub(1);
+                let new_cursor = isearch_find(content, &query, from, false).unwrap_or(cursor);
+                state.emacs_isearch = Some(isearch);
+                return Some(KeyAction {
+                    content_changed: false,
+                    cursor: new_cursor,
+                    selection: None,
+                    block_selection: None,
+                    vim_mode: None,
+                    status: Some(isearch_status(&query, false)),
+                    command_result: None,
+                });
+            }
+            _ => {
+                state.emacs_isearch = Some(isearch);
+                return None;
+            }
+        }
+    }
+
+    if ctrl && key == Key::S {
+        state.emacs_isearch = Some(EmacsIsearch {
+            query: String::new(),
+            forward: true,
+            anchor: cursor,
+        });
+        return Some(KeyAction {
+            content_changed: false,
+            cursor,
+            selection: None,
+            block_selection: None,
+            vim_mode: None,
+            status: Some(isearch_status("", true)),
+            command_result: None,
+        });
+    }
+
+    if ctrl && key == Key::R {
+        state.emacs_isearch = Some(EmacsIsearch {
+            query: String::new(),
+            forward: false,
+            anchor: cursor,
+        });
+        return Some(KeyAction {
+            content_changed: false,
+            cursor,
+            selection: None,
+            block_selection: None,
+            vim_mode: None,
+            status: Some(isearch_status("", false)),
+            command_result: None,
+        });
+    }
+
+    None
 }
 
 fn yank_into(state: &mut KeybindingState, text: String) {
@@ -1574,6 +1812,35 @@ fn handle_vim_visual_block(
                 command_result: None,
             });
         }
+        Key::C => {
+            let rect = BlockRect::from_positions(anchor, head);
+            yank_into(state, vim_ex::yank_block(content, rect));
+            let _ = vim_ex::delete_block(content, rect);
+            let insert_rect = BlockRect {
+                line_start: rect.line_start,
+                line_end: rect.line_end,
+                col_start: rect.col_start,
+                col_end: rect.col_start,
+            };
+            state.block_insert = Some((insert_rect, rect.col_start));
+            state.active_block = Some(insert_rect);
+            let new_cursor = vim_ex::block_pos_to_char_index(
+                content,
+                BlockPos {
+                    line: rect.line_start,
+                    col: rect.col_start,
+                },
+            );
+            return Some(KeyAction {
+                content_changed: true,
+                cursor: new_cursor,
+                selection: None,
+                block_selection: Some(insert_rect),
+                vim_mode: Some(VimMode::Insert),
+                status: Some("INSERT (block)".to_string()),
+                command_result: None,
+            });
+        }
         _ => {}
     }
 
@@ -1688,7 +1955,7 @@ pub fn render_vim_command_bar(
         let response = ui.add(
             egui::TextEdit::singleline(&mut state.command_buffer)
                 .desired_width(ui.available_width() - 8.0)
-                .hint_text("w · q · 42 · 1,5d · g/pat/d · g/pat/s/o/n/g · set number · reg"),
+                .hint_text("w · q · 42 · 1,5d · g/pat/d · g/pat/s/o/n/g · g/pat/norm · set number · reg"),
         );
         response.request_focus();
         if ui.input(|i| i.key_pressed(Key::Enter)) {
@@ -1921,9 +2188,15 @@ pub fn process_egui_input(
                         handle_vim(content, state, key, modifiers, cursor, selection)
                     }
                 }
-                KeybindingMode::Emacs => {
-                    handle_emacs(content, state, key, modifiers, cursor, selection)
-                }
+                KeybindingMode::Emacs => handle_emacs_isearch(
+                    content,
+                    state,
+                    key,
+                    modifiers,
+                    cursor,
+                    None,
+                )
+                .or_else(|| handle_emacs(content, state, key, modifiers, cursor, selection)),
                 KeybindingMode::Standard => None,
             };
             if let Some(act) = result {
@@ -1933,6 +2206,18 @@ pub fn process_egui_input(
                 }
                 action = Some(act);
                 break;
+            }
+        }
+        if action.is_none() && mode == KeybindingMode::Emacs && state.emacs_isearch.is_some() {
+            for event in &input.events {
+                if let egui::Event::Text(text) = event {
+                    if let Some(act) =
+                        handle_emacs_isearch(content, state, Key::A, Modifiers::NONE, cursor, Some(text))
+                    {
+                        action = Some(act);
+                        break;
+                    }
+                }
             }
         }
         if action.is_none() && mode == KeybindingMode::Vim && state.vim_mode == VimMode::Insert {
@@ -2009,6 +2294,7 @@ pub fn reset_for_mode(state: &mut KeybindingState, mode: KeybindingMode) {
     state.active_block = None;
     state.block_insert = None;
     state.emacs_mark = None;
+    state.emacs_isearch = None;
     state.vim_mode = match mode {
         KeybindingMode::Vim => VimMode::Normal,
         _ => VimMode::Insert,

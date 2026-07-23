@@ -1090,7 +1090,7 @@ fn App() -> impl IntoView {
                                         });
                                     }
                                 }
-                                placeholder="w · q · 42 · 1,5d · g/pat/d · g/pat/s/o/n/g · set number · reg"
+                                placeholder="w · q · g/pat/d · g/pat/s/o/n/g · g/pat/norm I-  · set number · reg"
                             />
                         </label>
                     </div>
@@ -1351,7 +1351,7 @@ fn App() -> impl IntoView {
                                     </label>
                                 </>
                             })}
-                            <p class="settings-hint">"Vim: hjkl · Ctrl+V · I/A 块插入 · :g/pat/s/o/n/g · : 命令 · \" /+/* · qa/@a · Emacs: C-Space mark · C-o/C-j/C-t · M-w 复制"</p>
+                            <p class="settings-hint">"Vim: Ctrl+V · I/A/C 块编辑 · :g/pat/s/o/n/g · :g/pat/norm · Emacs: C-Space mark · C-s 搜索 · C-o/C-j/C-t · M-w"</p>
                             <div class="settings-actions">
                                 <button class="btn btn-primary" type="button"
                                     on:click=move |_| set_settings_open.set(false)>"完成"</button>
@@ -1493,7 +1493,18 @@ fn App() -> impl IntoView {
                                 }
                                 label
                             }
-                            KeybindingMode::Emacs => " · Emacs".to_string(),
+                            KeybindingMode::Emacs => {
+                                if let Some(ref isearch) = kb.emacs_isearch {
+                                    let dir = if isearch.forward {
+                                        "I-search"
+                                    } else {
+                                        "I-search backward"
+                                    };
+                                    format!(" · {dir}:{}", isearch.query)
+                                } else {
+                                    " · Emacs".to_string()
+                                }
+                            }
                             KeybindingMode::Standard => String::new(),
                         };
                         format!("行 {lines} · 字 {words} · 字符 {chars}{mode_label}")

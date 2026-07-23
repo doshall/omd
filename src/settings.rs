@@ -119,7 +119,7 @@ pub fn render_settings_window(ctx: &Context, open: &mut bool, settings: &mut Edi
                 );
                 ui.label(
                     egui::RichText::new(
-                        "Vim: hjkl · count · dd/dw · Ctrl+V block · I/A insert · :g/pat/s/o/n/g · :cmd · \"a/+/* · qa/@a",
+                        "Vim: hjkl · Ctrl+V block · I/A/C · :g/pat/norm · :cmd · Emacs: C-Space · C-s/C-r search",
                     )
                     .small()
                     .weak(),

@@ -731,7 +731,17 @@ impl OmdApp {
                 ui.label(label);
             } else if self.editor_settings.keybinding_mode == KeybindingMode::Emacs {
                 ui.separator();
-                ui.label("Emacs");
+                let label = if let Some(ref isearch) = self.keybinding_state.emacs_isearch {
+                    let dir = if isearch.forward {
+                        "I-search"
+                    } else {
+                        "I-search backward"
+                    };
+                    format!("{dir}: {}", isearch.query)
+                } else {
+                    "Emacs".to_string()
+                };
+                ui.label(label);
             }
 
             if let Some(path) = &self.file_path {
