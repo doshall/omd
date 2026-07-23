@@ -11,9 +11,9 @@
     <link data-trunk rel="copy-file" href="assets/highlight.min.js" />
     <link data-trunk rel="copy-file" href="assets/highlight-github.min.css" />
     <link data-trunk rel="copy-file" href="assets/highlight-github-dark.min.css" />
-    <link id="hljs-theme" rel="stylesheet" href="assets/highlight-github.min.css" />
-    <script src="assets/mermaid.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js'"></script>
-    <script src="assets/highlight.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js'"></script>
+    <link id="hljs-theme" rel="stylesheet" href="highlight-github.min.css" />
+    <script src="mermaid.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js'"></script>
+    <script src="highlight.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js'"></script>
     <script>
         mermaid.initialize({
             startOnLoad: false,
@@ -27,8 +27,8 @@
             const themeLink = document.getElementById('hljs-theme');
             if (themeLink) {
                 themeLink.href = dark
-                    ? 'assets/highlight-github-dark.min.css'
-                    : 'assets/highlight-github.min.css';
+                    ? 'highlight-github-dark.min.css'
+                    : 'highlight-github.min.css';
             }
             document.querySelectorAll('.preview-content pre code').forEach((block) => {
                 if (block.classList.contains('language-mermaid')) return;
