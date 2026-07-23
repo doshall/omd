@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build omd v0.2.0+ release artifacts locally (desktop + web).
+# 0.3.0+ release artifacts locally (desktop + web).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

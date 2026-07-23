@@ -1,6 +1,6 @@
 [package]
 name = "omd"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "A lightweight Markdown editor written in Rust"
 license = "MIT"
@@ -10,7 +10,7 @@ readme = "README.md"
 eframe = { version = "0.29", default-features = true, features = ["default_fonts", "glow", "persistence"] }
 egui = "0.29"
 egui_extras = { version = "0.29", features = ["image"] }
-pulldown-cmark = "0.12"
+pulldown-cmark = { version = "0.12", features = ["html"] }
 rfd = "0.15"
 serde = { version = "1", features = ["derive"] }
 mermaid-rs-renderer = { version = "0.3", default-features = false }

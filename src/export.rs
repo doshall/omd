@@ -1,0 +1,167 @@
+use crate::markdown;
+use std::path::Path;
+
+const EXPORT_CSS: &str = r#"
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.7;
+  padding: 2rem 1.5rem;
+}
+body.light { background: #f8f9fa; color: #212529; }
+body.dark { background: #1a1b1e; color: #e9ecef; }
+article { max-width: 48rem; margin: 0 auto; }
+h1 { font-size: 1.75rem; margin: 0.5rem 0; }
+h2 { font-size: 1.4rem; margin: 0.5rem 0; }
+h3 { font-size: 1.2rem; margin: 0.4rem 0; }
+h4, h5, h6 { margin: 0.4rem 0; }
+p { margin: 0.5rem 0; }
+ul, ol { margin: 0.5rem 0; padding-left: 1.5rem; }
+blockquote {
+  margin: 0.5rem 0;
+  padding-left: 1rem;
+  border-left: 3px solid #0d6efd;
+}
+body.dark blockquote { border-left-color: #4dabf7; color: #adb5bd; }
+code {
+  font-family: "SF Mono", "Fira Code", Consolas, monospace;
+  font-size: 0.9em;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+}
+body.light code { background: #f1f3f5; }
+body.dark code { background: #2c2e33; }
+pre {
+  padding: 0.75rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+body.light pre { background: #f1f3f5; }
+body.dark pre { background: #2c2e33; }
+pre code { background: none; padding: 0; }
+table { border-collapse: collapse; width: 100%; margin: 0.5rem 0; font-size: 0.9rem; }
+th, td { border: 1px solid #dee2e6; padding: 0.4rem 0.6rem; }
+body.dark th, body.dark td { border-color: #373a40; }
+body.light th { background: #e9ecef; }
+body.dark th { background: #2c2e33; }
+a { color: #0d6efd; }
+body.dark a { color: #4dabf7; }
+hr { border: none; border-top: 1px solid #dee2e6; margin: 1rem 0; }
+body.dark hr { border-top-color: #373a40; }
+img { max-width: 100%; height: auto; border-radius: 6px; margin: 0.5rem 0; display: block; }
+.mermaid {
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+body.light .mermaid { background: #e9ecef; }
+body.dark .mermaid { background: #2c2e33; }
+footer {
+  max-width: 48rem;
+  margin: 2rem auto 0;
+  padding-top: 1rem;
+  font-size: 0.85rem;
+  opacity: 0.65;
+  text-align: center;
+}
+"#;
+
+/// Build a standalone HTML document from Markdown source.
+pub fn export_html_document(markdown: &str, title: &str, dark_mode: bool) -> String {
+    let body = markdown::markdown_to_html(markdown);
+    let theme_class = if dark_mode { "dark" } else { "light" };
+    let mermaid_theme = if dark_mode { "dark" } else { "default" };
+    let hljs_theme = if dark_mode {
+        "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/styles/github-dark.min.css"
+    } else {
+        "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/styles/github.min.css"
+    };
+    let escaped_title = html_escape_attr(title);
+
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>{escaped_title}</title>
+<link rel="stylesheet" href="{hljs_theme}" />
+<style>{EXPORT_CSS}</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js"></script>
+</head>
+<body class="{theme_class}">
+<article class="preview-content">
+{body}
+</article>
+<footer>Exported by <a href="https://github.com/doshall/omd">omd</a></footer>
+<script>
+mermaid.initialize({{ startOnLoad: false, theme: '{mermaid_theme}', securityLevel: 'loose' }});
+document.querySelectorAll('pre code').forEach((block) => {{
+  if (!block.classList.contains('language-mermaid')) hljs.highlightElement(block);
+}});
+mermaid.run({{ nodes: document.querySelectorAll('.mermaid') }}).catch(console.warn);
+</script>
+</body>
+</html>
+"#
+    )
+}
+
+/// Derive a page title from a file path or markdown content.
+pub fn export_title(file_path: Option<&Path>, markdown: &str) -> String {
+    if let Some(path) = file_path {
+        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+            if !stem.is_empty() {
+                return stem.to_string();
+            }
+        }
+    }
+    markdown
+        .lines()
+        .find_map(|line| {
+            let trimmed = line.trim();
+            trimmed.strip_prefix("# ").map(str::trim)
+        })
+        .filter(|title| !title.is_empty())
+        .unwrap_or("document")
+        .to_string()
+}
+
+/// Suggest an `.html` filename from a markdown path or default name.
+pub fn html_filename(file_path: Option<&Path>) -> String {
+    file_path
+        .and_then(|p| p.file_stem())
+        .and_then(|s| s.to_str())
+        .map(|stem| format!("{stem}.html"))
+        .unwrap_or_else(|| "document.html".to_string())
+}
+
+fn html_escape_attr(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn export_contains_article_and_title() {
+        let html = export_html_document("# Hello\n\nWorld", "Test", false);
+        assert!(html.contains("<title>Test</title>"));
+        assert!(html.contains("<article"));
+        assert!(html.contains("Hello"));
+    }
+
+    #[test]
+    fn title_from_markdown_heading() {
+        assert_eq!(
+            export_title(None, "# My Doc\n\nbody"),
+            "My Doc"
+        );
+    }
+}

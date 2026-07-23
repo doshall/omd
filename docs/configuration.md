@@ -24,7 +24,7 @@ channel = "stable"
 | 字段 | 值 | 说明 |
 |------|-----|------|
 | `name` | `omd` | 包名与二进制名 |
-| `version` | `0.2.0` | 语义化版本 |
+| `version` | `0.3.0` | 语义化版本 |
 | `edition` | `2021` | Rust 版本 |
 | `license` | `MIT` | 开源许可证 |
 
@@ -113,6 +113,7 @@ eframe::NativeOptions {
 | 拖拽插入图片 | 将 PNG/JPG/GIF/WebP/SVG/BMP 拖入编辑区 |
 | 未保存确认 | 关闭窗口、退出、新建、打开时若有修改会弹出对话框 |
 | 自动保存 | 对已保存到磁盘的文件，在设置延迟后自动写入 |
+| 导出 HTML | **File → Export HTML…** 或工具栏 **📤**，生成独立 HTML 文件 |
 
 #### Vim 模式参考
 
@@ -198,6 +199,17 @@ port = 8080              # 开发服务器端口
 [build]
 public_url = "/omd/"
 ```
+
+### PWA（渐进式 Web 应用）
+
+| 文件 | 说明 |
+|------|------|
+| `manifest.webmanifest` | 应用名称、图标、主题色、`standalone` 显示模式 |
+| `sw.js` | Service Worker，缓存静态资源以支持离线访问 |
+| `assets/icon-192.png` / `icon-512.png` | 主屏幕图标 |
+| `assets/apple-touch-icon.png` | iOS 主屏幕图标 |
+
+安装方式：在支持的浏览器中打开 Web 版，选择「安装应用」或「添加到主屏幕」。
 
 ### localStorage 键
 

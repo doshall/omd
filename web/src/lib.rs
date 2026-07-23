@@ -1,4 +1,5 @@
 mod editor_highlight;
+mod export;
 mod find_replace;
 mod vim_ex;
 mod keybindings;
@@ -199,7 +200,7 @@ fn apply_theme(dark: bool) {
     omd_apply_theme(dark);
 }
 
-fn download_file(content: &str, filename: &str) {
+fn download_blob(content: &str, filename: &str, mime: &str) {
     let window = match web_sys::window() {
         Some(w) => w,
         None => return,
@@ -213,7 +214,7 @@ fn download_file(content: &str, filename: &str) {
     parts.push(&JsValue::from_str(content));
 
     let blob_props = BlobPropertyBag::new();
-    let _ = blob_props.set_type("text/markdown;charset=utf-8");
+    let _ = blob_props.set_type(mime);
 
     let blob = match Blob::new_with_str_sequence_and_options(&parts, &blob_props) {
         Ok(b) => b,
@@ -238,6 +239,10 @@ fn download_file(content: &str, filename: &str) {
         }
         let _ = web_sys::Url::revoke_object_url(&url);
     }
+}
+
+fn download_file(content: &str, filename: &str) {
+    download_blob(content, filename, "text/markdown;charset=utf-8");
 }
 
 fn textarea_selection(el: &HtmlTextAreaElement) -> (usize, usize) {
@@ -983,6 +988,18 @@ fn App() -> impl IntoView {
                     <button class="btn btn-primary" on:click=move |_| {
                         download_file(&content.get(), &filename.get());
                     }>"下载"</button>
+                    <button class="btn" on:click=move |_| {
+                        let md = content.get();
+                        let name = filename.get();
+                        let dark = dark_mode.get();
+                        let title = export::export_title(&name, &md);
+                        let html = export::export_html_document(&md, &title, dark);
+                        download_blob(
+                            &html,
+                            &export::html_filename(&name),
+                            "text/html;charset=utf-8",
+                        );
+                    }>"导出 HTML"</button>
                     <button class="btn btn-icon" title="设置"
                         on:click=move |_| set_settings_open.set(true)>"⚙"</button>
                     <button class="btn btn-icon" title="切换主题"
