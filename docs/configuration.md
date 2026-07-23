@@ -97,8 +97,27 @@ eframe::NativeOptions {
 | `editor_line_height` | `1.6` | 编辑区行高倍数 |
 | `preview_font_size` | `15.0` | 预览区字号（px） |
 | `show_undo_redo_hint` | `true` | Ctrl+Z / Ctrl+Y 状态栏提示 |
+| `keybinding_mode` | `"standard"` | 键位模式：`standard` / `vim` / `emacs` |
+| `vim_show_block_highlight` | `true` | Vim 模式下高亮 Visual Block 选区 |
+| `vim_use_system_clipboard` | `true` | Vim 模式下 `"` / `"a` 与系统剪贴板寄存器 `"+` / `"*` 同步 |
 
 打开方式：**View → Settings…**（`F11` 切换专注模式，`Esc` 退出）
+
+#### Vim 模式参考
+
+启用 `keybinding_mode: "vim"` 后可用：
+
+| 类别 | 功能 |
+|------|------|
+| 移动 | `hjkl`、`w`/`b`/`e`、`0`/`$`、`gg`/`G`、数字前缀（如 `3j`） |
+| 编辑 | `dd`/`yy`/`dw`/`cw`/`cc`/`D`、`p`/`P`、`>>`/`<<` |
+| Visual Block | `Ctrl+V` 进入，`hjkl` 扩展，`y`/`d` 复制或删除列块 |
+| 命令行 | `:`（桌面 `Shift+;`）输入 Ex 命令 |
+| 寄存器 | `"a`…`"z`、`"+`、`"*`、`"0`、`:reg` 查看 |
+| 宏 | `qa` 录制 → `q` 停止 → `@a` / `@@` 回放 |
+| Ex 命令 | `:w` `:q` `:42` `:1,5d` `:g/pat/d` `:v/pat/d` `:%s/old/new/g` `:set number` |
+
+详见 [Vim 键位参考](vim-keybindings.md)。
 
 #### 持久化存储位置
 

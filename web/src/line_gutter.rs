@@ -32,6 +32,59 @@ pub fn highlight_top_px(
     pad + line as f64 * font_size * line_height - scroll_top
 }
 
+pub fn char_index_to_utf16(content: &str, char_idx: usize) -> u32 {
+    content
+        .chars()
+        .take(char_idx)
+        .map(|c| c.len_utf16() as u32)
+        .sum()
+}
+
+pub fn utf16_to_char_index(content: &str, utf16: u32) -> usize {
+    let mut pos = 0u32;
+    for (i, ch) in content.chars().enumerate() {
+        if pos >= utf16 {
+            return i;
+        }
+        pos += ch.len_utf16() as u32;
+    }
+    content.chars().count()
+}
+
+pub fn block_highlight_style(
+    line: usize,
+    col_start: usize,
+    col_end: usize,
+    scroll_top: f64,
+    font_size: f64,
+    line_height: f64,
+) -> String {
+    let top = highlight_top_px(line, scroll_top, font_size, line_height);
+    let width_cols = col_end.saturating_sub(col_start).max(1);
+    format!(
+        "top:{top}px;left:calc(var(--editor-pad) + {col_start}ch);width:calc({width_cols}ch);height:calc(var(--editor-font-size) * var(--editor-line-height));"
+    )
+}
+
+pub fn set_char_selection(
+    textarea: &web_sys::HtmlTextAreaElement,
+    content: &str,
+    cursor: usize,
+    selection: Option<(usize, usize)>,
+) {
+    let (start, end) = if let Some((a, b)) = selection {
+        (
+            char_index_to_utf16(content, a),
+            char_index_to_utf16(content, b),
+        )
+    } else {
+        let p = char_index_to_utf16(content, cursor);
+        (p, p)
+    };
+    textarea.set_selection_start(Some(start)).ok();
+    textarea.set_selection_end(Some(end)).ok();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

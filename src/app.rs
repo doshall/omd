@@ -1,5 +1,6 @@
 use crate::clipboard;
 use crate::find_replace::{self, FindBarState};
+use crate::keybindings::{self, KeybindingMode, KeybindingState, VimMode};
 use crate::line_gutter;
 use crate::markdown::{self, PreviewContext};
 use crate::mermaid::MermaidCache;
@@ -137,6 +138,12 @@ pub struct OmdApp {
     find_bar: FindBarState,
     #[serde(skip)]
     sync_scroll: SyncController,
+    #[serde(skip)]
+    keybinding_state: KeybindingState,
+    #[serde(skip)]
+    editor_text_edit_id: Option<egui::Id>,
+    #[serde(skip)]
+    last_keybinding_mode: KeybindingMode,
 }
 
 impl Default for OmdApp {
@@ -155,6 +162,9 @@ impl Default for OmdApp {
             mermaid_cache: MermaidCache::default(),
             find_bar: FindBarState::default(),
             sync_scroll: SyncController::default(),
+            keybinding_state: KeybindingState::default(),
+            editor_text_edit_id: None,
+            last_keybinding_mode: KeybindingMode::Standard,
         }
     }
 }
@@ -391,6 +401,51 @@ impl OmdApp {
         false
     }
 
+    fn editor_cursor(&self, ctx: &egui::Context) -> usize {
+        if let Some(id) = self.editor_text_edit_id {
+            if let Some(state) = egui::text_edit::TextEditState::load(ctx, id) {
+                if let Some(range) = state.cursor.char_range() {
+                    return range.primary.index;
+                }
+            }
+        }
+        0
+    }
+
+    fn apply_key_action(&mut self, ctx: &egui::Context, action: keybindings::KeyAction) {
+        if action.content_changed {
+            self.modified = true;
+        }
+        if let Some(status) = action.status {
+            self.set_status(status);
+        }
+        if let Some(result) = action.command_result {
+            if result.request_save {
+                self.save_file();
+            }
+            if let Some(show) = result.line_numbers {
+                self.editor_settings.show_line_numbers = show;
+            }
+        }
+        if let Some(id) = self.editor_text_edit_id {
+            if let Some(mut state) = egui::text_edit::TextEditState::load(ctx, id) {
+                let sel = action
+                    .selection
+                    .map(|(a, b)| {
+                        egui::text::CCursorRange::two(
+                            egui::text::CCursor::new(a),
+                            egui::text::CCursor::new(b),
+                        )
+                    })
+                    .unwrap_or_else(|| {
+                        egui::text::CCursorRange::one(egui::text::CCursor::new(action.cursor))
+                    });
+                state.cursor.set_char_range(Some(sel));
+                state.store(ctx, id);
+            }
+        }
+    }
+
     fn handle_find_bar_actions(&mut self, actions: find_replace::FindBarOutput) {
         if actions.close {
             self.find_bar.close();
@@ -492,6 +547,29 @@ impl OmdApp {
                                     );
                                 }
 
+                                if self.editor_settings.keybinding_mode == KeybindingMode::Vim
+                                    && self.editor_settings.vim_show_block_highlight
+                                    && self.keybinding_state.vim_mode == VimMode::VisualBlock
+                                {
+                                    if let Some(block) = self.keybinding_state.active_block {
+                                        let gutter = if self.editor_settings.show_line_numbers {
+                                            line_gutter::GUTTER_WIDTH
+                                        } else {
+                                            0.0
+                                        };
+                                        let char_width = self.editor_settings.editor_font_size;
+                                        line_gutter::paint_block_selection(
+                                            ui,
+                                            block,
+                                            gutter,
+                                            char_width,
+                                            line_gutter::TEXTEDIT_TOP_PAD,
+                                            line_height,
+                                            4.0,
+                                        );
+                                    }
+                                }
+
                                 ui.horizontal_top(|ui| {
                                     if self.editor_settings.show_line_numbers {
                                         line_gutter::show(
@@ -503,6 +581,30 @@ impl OmdApp {
                                         );
                                     }
 
+                                    if self.last_keybinding_mode != self.editor_settings.keybinding_mode {
+                                        keybindings::reset_for_mode(
+                                            &mut self.keybinding_state,
+                                            self.editor_settings.keybinding_mode,
+                                        );
+                                        self.last_keybinding_mode = self.editor_settings.keybinding_mode;
+                                    }
+                                    self.keybinding_state.use_system_clipboard =
+                                        self.editor_settings.vim_use_system_clipboard;
+
+                                    if self.editor_settings.keybinding_mode != KeybindingMode::Standard
+                                        && !self.find_bar.open
+                                    {
+                                        if let Some(action) = keybindings::process_egui_input(
+                                            ui.ctx(),
+                                            &mut self.content,
+                                            text_edit_id,
+                                            self.editor_settings.keybinding_mode,
+                                            &mut self.keybinding_state,
+                                        ) {
+                                            self.apply_key_action(ui.ctx(), action);
+                                        }
+                                    }
+
                                     let response = egui::TextEdit::multiline(&mut self.content)
                                         .id_salt(find_replace::EDITOR_ID_SALT)
                                         .font(font_id.clone())
@@ -511,6 +613,8 @@ impl OmdApp {
                                         .text_color(text_color)
                                         .frame(true)
                                         .show(ui);
+
+                                    self.editor_text_edit_id = Some(response.response.id);
 
                                     if response.response.changed() {
                                         self.modified = true;
@@ -614,6 +718,21 @@ impl OmdApp {
             let chars = self.content.chars().count();
 
             ui.label(format!("Lines: {lines}  Words: {words}  Chars: {chars}"));
+
+            if self.editor_settings.keybinding_mode == KeybindingMode::Vim {
+                ui.separator();
+                let mut label = format!("Vim: {}", self.keybinding_state.vim_mode.label());
+                if self.keybinding_state.count > 0 {
+                    label.push_str(&format!(" · {}", self.keybinding_state.count));
+                }
+                if let Some(reg) = self.keybinding_state.macro_recording {
+                    label.push_str(&format!(" · REC @{reg}"));
+                }
+                ui.label(label);
+            } else if self.editor_settings.keybinding_mode == KeybindingMode::Emacs {
+                ui.separator();
+                ui.label("Emacs");
+            }
 
             if let Some(path) = &self.file_path {
                 ui.separator();
@@ -792,6 +911,23 @@ impl eframe::App for OmdApp {
             egui::TopBottomPanel::top("find_bar").show(ctx, |ui| {
                 let actions = find_replace::render_find_bar(ui, &mut self.find_bar, &self.content);
                 self.handle_find_bar_actions(actions);
+            });
+        }
+
+        if show_chrome
+            && self.editor_settings.keybinding_mode == KeybindingMode::Vim
+            && self.keybinding_state.vim_mode == keybindings::VimMode::Command
+        {
+            let cursor = self.editor_cursor(ctx);
+            egui::TopBottomPanel::top("vim_command_bar").show(ctx, |ui| {
+                if let Some(action) = keybindings::render_vim_command_bar(
+                    ui,
+                    &mut self.keybinding_state,
+                    &mut self.content,
+                    cursor,
+                ) {
+                    self.apply_key_action(ctx, action);
+                }
             });
         }
 

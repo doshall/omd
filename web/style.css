@@ -90,6 +90,36 @@ html, body {
     flex-shrink: 0;
 }
 
+.command-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.75rem;
+    background: var(--toolbar-bg);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.command-field {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    flex: 1;
+}
+
+.command-input {
+    flex: 1;
+    min-width: 12rem;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.85rem;
+    font-family: ui-monospace, monospace;
+}
+
 .find-field {
     display: flex;
     align-items: center;
@@ -274,6 +304,14 @@ html, body {
     background: color-mix(in srgb, var(--accent) 14%, transparent);
     pointer-events: none;
     z-index: 0;
+}
+
+.vim-block-highlight {
+    position: absolute;
+    background: color-mix(in srgb, var(--accent) 38%, transparent);
+    pointer-events: none;
+    z-index: 0;
+    border-radius: 1px;
 }
 
 .editor-pane textarea {
@@ -495,6 +533,7 @@ html, body {
 #app.focus-mode .header,
 #app.focus-mode .toolbar,
 #app.focus-mode .find-bar,
+#app.focus-mode .command-bar,
 #app.focus-mode .status-bar,
 #app.focus-mode .preview-pane,
 #app.focus-mode .divider,

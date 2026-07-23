@@ -1,5 +1,7 @@
 use egui::{Align2, FontId, Id, Sense, Ui, Vec2};
 
+use crate::vim_ex::BlockRect;
+
 pub const GUTTER_WIDTH: f32 = 48.0;
 const GUTTER_PAD_RIGHT: f32 = 8.0;
 /// Matches egui `TextEdit` inner vertical padding.
@@ -28,6 +30,28 @@ pub fn current_line_from_state(ctx: &egui::Context, text_edit_id: Id, content: &
         }
     }
     0
+}
+
+pub fn paint_block_selection(
+    ui: &Ui,
+    rect: BlockRect,
+    gutter_width: f32,
+    char_width: f32,
+    top_pad: f32,
+    line_height: f32,
+    left_pad: f32,
+) {
+    let color = ui.visuals().selection.bg_fill.gamma_multiply(0.45);
+    for line in rect.line_start..=rect.line_end {
+        let y = top_pad + line as f32 * line_height;
+        let x = gutter_width + left_pad + rect.col_start as f32 * char_width;
+        let w = (rect.col_end.saturating_sub(rect.col_start)) as f32 * char_width;
+        let block_rect = egui::Rect::from_min_size(
+            egui::pos2(ui.min_rect().left() + x, ui.min_rect().top() + y),
+            egui::vec2(w.max(char_width * 0.5), line_height),
+        );
+        ui.painter().rect_filled(block_rect, 0.0, color);
+    }
 }
 
 pub fn paint_current_line_highlight(

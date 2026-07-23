@@ -1,4 +1,5 @@
 use eframe::egui::{self, Context};
+use crate::keybindings::KeybindingMode;
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq)]
 pub struct EditorSettings {
@@ -12,6 +13,11 @@ pub struct EditorSettings {
     pub editor_line_height: f32,
     pub preview_font_size: f32,
     pub show_undo_redo_hint: bool,
+    pub keybinding_mode: KeybindingMode,
+    /// Highlight Visual Block selection (Vim mode only).
+    pub vim_show_block_highlight: bool,
+    /// Sync `"+` / `"*` registers with the system clipboard (Vim mode only).
+    pub vim_use_system_clipboard: bool,
 }
 
 impl Default for EditorSettings {
@@ -27,6 +33,9 @@ impl Default for EditorSettings {
             editor_line_height: 1.6,
             preview_font_size: 15.0,
             show_undo_redo_hint: true,
+            keybinding_mode: KeybindingMode::Standard,
+            vim_show_block_highlight: true,
+            vim_use_system_clipboard: true,
         }
     }
 }
@@ -81,6 +90,50 @@ pub fn render_settings_window(ctx: &Context, open: &mut bool, settings: &mut Edi
                 &mut settings.show_undo_redo_hint,
                 "Show undo / redo hints in status bar",
             );
+
+            ui.separator();
+            ui.heading("Keybindings");
+            egui::ComboBox::from_label("Mode")
+                .selected_text(settings.keybinding_mode.label())
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut settings.keybinding_mode,
+                        KeybindingMode::Standard,
+                        "Standard",
+                    );
+                    ui.selectable_value(&mut settings.keybinding_mode, KeybindingMode::Vim, "Vim");
+                    ui.selectable_value(
+                        &mut settings.keybinding_mode,
+                        KeybindingMode::Emacs,
+                        "Emacs",
+                    );
+                });
+            if settings.keybinding_mode == KeybindingMode::Vim {
+                ui.checkbox(
+                    &mut settings.vim_show_block_highlight,
+                    "Highlight Visual Block selection",
+                );
+                ui.checkbox(
+                    &mut settings.vim_use_system_clipboard,
+                    "Use system clipboard for \"+ / \"* registers",
+                );
+                ui.label(
+                    egui::RichText::new(
+                        "Vim: hjkl · count · dd/dw · Ctrl+V block · I/A insert · :g/pat/s/o/n/g · :cmd · \"a/+/* · qa/@a",
+                    )
+                    .small()
+                    .weak(),
+                );
+            }
+            if settings.keybinding_mode == KeybindingMode::Emacs {
+                ui.label(
+                    egui::RichText::new(
+                        "Emacs: Ctrl+b/f/n/p/a/e · Ctrl+u prefix · Alt+b/f · M-d kill word",
+                    )
+                    .small()
+                    .weak(),
+                );
+            }
         });
     *open = open_flag;
 }

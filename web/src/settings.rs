@@ -29,6 +29,9 @@ pub struct EditorSettings {
     pub editor_line_height: f32,
     pub preview_font_size: f32,
     pub show_undo_redo_hint: bool,
+    pub keybinding_mode: crate::keybindings::KeybindingMode,
+    pub vim_show_block_highlight: bool,
+    pub vim_use_system_clipboard: bool,
 }
 
 impl Default for EditorSettings {
@@ -44,6 +47,9 @@ impl Default for EditorSettings {
             editor_line_height: 1.6,
             preview_font_size: 15.0,
             show_undo_redo_hint: true,
+            keybinding_mode: crate::keybindings::KeybindingMode::Standard,
+            vim_show_block_highlight: true,
+            vim_use_system_clipboard: true,
         }
     }
 }

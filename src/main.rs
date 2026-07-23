@@ -4,6 +4,8 @@
 mod app;
 mod clipboard;
 mod find_replace;
+mod keybindings;
+mod vim_ex;
 mod line_gutter;
 mod markdown;
 mod mermaid;
