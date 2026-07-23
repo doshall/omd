@@ -277,7 +277,7 @@ cargo build --release
 
 ### GitHub Releases
 
-1. 创建 tag：`git tag v0.1.0 && git push origin v0.1.0`
+1. 创建 tag：`git tag v0.2.0 && git push origin v0.2.0`
 2. 在 GitHub Releases 页面创建 Release
 3. 上传各平台二进制文件
 

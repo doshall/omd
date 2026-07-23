@@ -4,22 +4,42 @@
 
 ## [未发布]
 
-### 新增
+## [0.2.0] - 2026-07-23
+
+### 新增 — 编辑体验（A 类）
+
 - **查找 / 替换**（桌面 / Web / Android）：`Ctrl+F` / `Ctrl+H`，支持区分大小写、全部替换
 - **行号与当前行高亮**（桌面 / Web / Android）：编辑区左侧行号栏，光标所在行背景高亮
 - **编辑区与预览区同步滚动**（桌面 / Web / Android）：分栏模式下按滚动比例联动
 - **预览区代码块语法高亮**（桌面 / Web / Android）：基于 syntect / highlight.js
-- **编辑器设置面板**（桌面 / Web / Android）：行号、Minimap、同步滚动、字号行高、专注模式等可配置项
 - **编辑区语法高亮**（桌面 / Web / Android）：Markdown 着色，设置项控制，默认关闭
-- **Vim / Emacs 键位模式**：Visual Block `p`/`P`/`u`/`U`、Emacs isearch 全匹配 overlay、`:g/pat/norm @a` 宏回放
 - **滚动条 Minimap**（桌面 / Web / Android）：编辑区右侧文档缩略导航，点击或拖拽定位
+- **编辑器设置面板**（桌面 / Web / Android）：行号、Minimap、同步滚动、字号行高、专注模式等可配置项
+- **撤销 / 重做状态提示**（桌面 / Web / Android）：设置项控制，状态栏提示
+
+### 新增 — Vim / Emacs 键位
+
+- **Vim 模式**（桌面 / Web / Android）：Normal / Insert / Visual / Visual Block / Command
+- Visual Block：`Ctrl+V` 列选、`y`/`d`/`c`/`p`/`P`/`~`/`u`/`U`/`>`/`<`、`I`/`A` 块插入
+- Ex 命令：`:g/pat/d`、`:g/pat/s`、`:g/pat/norm`（含 `@a` 宏回放）、`:1,5d`、`:reg` 等
+- 系统剪贴板寄存器 `"+` / `"*`（可配置）
+- **Emacs 模式**：`Ctrl+S`/`Ctrl+R` 增量搜索（全匹配 overlay 高亮）、`Ctrl+Space` 标记等
+- 文档：[Vim 键位参考](docs/vim-keybindings.md)
+
+### 新增 — 平台专项
+
 - **桌面版 Mermaid**：纯 Rust 渲染（mermaid-rs-renderer + resvg）
 - **桌面版图片粘贴**：`Ctrl+V` 剪贴板截图（Base64 嵌入）
 - 一键构建脚本 `scripts/build-android.sh`
-- Mermaid.js 离线打包（`web/assets/mermaid.min.js`）
+- Mermaid.js / highlight.js 离线打包（`web/assets/`）
 - [Android 版指南](docs/android.md)
 
+### 修复
+
+- **Web 版页面空白**：修正 Trunk 静态资源路径（`mermaid.min.js` 等）
+
 ### 变更
+
 - 合并所有 feature 分支至 `main`，三版本统一维护
 - Web 版 `Trunk.toml` 设置 `public_url = "./"` 支持 Android assets 加载
 - Web 版支持 `omd-web-filename` localStorage 键（Android 打开文件时保留文件名）
@@ -55,5 +75,6 @@
 - 桌面：eframe 0.29、egui 0.29、egui_extras、mermaid-rs-renderer、resvg、arboard、pulldown-cmark 0.12、rfd 0.15
 - Web：Leptos 0.7、pulldown-cmark 0.12、Trunk 0.21、Mermaid.js 11
 
-[未发布]: https://github.com/doshall/omd/compare/v0.1.0...HEAD
+[未发布]: https://github.com/doshall/omd/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/doshall/omd/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/doshall/omd/releases/tag/v0.1.0
