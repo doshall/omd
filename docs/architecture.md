@@ -2,6 +2,28 @@
 
 本文档描述 omd 项目的技术架构、模块划分和数据流。
 
+## 架构总览
+
+```mermaid
+flowchart TB
+    subgraph Desktop["桌面版 (src/)"]
+        D1[main.rs] --> D2[app.rs]
+        D2 --> D3[markdown.rs]
+        D3 --> D4[pulldown-cmark]
+        D3 --> D5[egui 控件]
+        D2 --> D6[rfd 文件对话框]
+        D2 --> D7[eframe 持久化]
+    end
+
+    subgraph Web["Web 版 (web/)"]
+        W1[index.html] --> W2[lib.rs Leptos]
+        W2 --> W3[markdown.rs]
+        W3 --> W4[pulldown-cmark HTML]
+        W2 --> W5[localStorage]
+        W1 --> W6[Mermaid.js]
+    end
+```
+
 ## 总体架构
 
 omd 由两个**独立但互补**的子项目组成：
@@ -293,4 +315,7 @@ CSS 自定义属性：
 
 - [开发指南](development.md)
 - [Markdown 语法支持](markdown-syntax.md)
-- [部署指南](deployment.md)
+- [配置参考](configuration.md)
+- [API 参考](api-reference.md)
+- [安全说明](security.md)
+- [版本功能对比](comparison.md)

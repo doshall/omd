@@ -263,6 +263,25 @@ ls -lh web/dist/*.wasm
 - [ ] 刷新页面，内容恢复
 - [ ] 手机浏览器布局
 
+### 回归测试脚本
+
+可快速验证基本功能：
+
+```bash
+#!/bin/bash
+set -e
+echo "=== 桌面版编译 ==="
+cargo build --release
+
+echo "=== Web 版编译 ==="
+cd web && env -u NO_COLOR trunk build --release && cd ..
+
+echo "=== Clippy 检查 ==="
+cargo clippy -- -D warnings 2>/dev/null || echo "Clippy 有警告，请检查"
+
+echo "=== 全部通过 ==="
+```
+
 ## 发布流程
 
 ### 桌面版

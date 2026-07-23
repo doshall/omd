@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 文档中心
+    url: https://github.com/doshall/omd/blob/main/docs/README.md
+    about: 查看完整项目文档
+  - name: 常见问题
+    url: https://github.com/doshall/omd/blob/main/docs/faq.md
+    about: FAQ 与故障排除

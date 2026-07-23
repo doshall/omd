@@ -92,6 +92,21 @@ omd/
 
 桌面版与 Web 版是**独立子项目**，共享设计理念但代码分开维护。修改 Markdown 渲染逻辑时，需分别更新 `src/markdown.rs` 和 `web/src/markdown.rs`。
 
+详细模块说明见 [架构设计](docs/architecture.md) 和 [API 参考](docs/api-reference.md)。
+
+## 文档维护
+
+修改功能时，请同步更新相关文档：
+
+| 变更类型 | 需更新的文档 |
+|----------|-------------|
+| 新功能 | 用户指南、对应版本指南、CHANGELOG |
+| 新配置项 | 配置参考 |
+| 新公开 API | API 参考 |
+| 安全相关 | 安全说明、SECURITY.md |
+| 部署变更 | 部署指南 |
+| 版本发布 | CHANGELOG、README 版本号 |
+
 ## Pull Request 检查清单
 
 - [ ] 代码可编译（桌面版和/或 Web 版）

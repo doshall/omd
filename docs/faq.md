@@ -176,7 +176,32 @@ rustup target add wasm32-unknown-unknown
 ### 数据安全吗？
 
 - **桌面版**：文件存储在本地磁盘，不上传任何数据
-- **Web 版**：内容保存在浏览器 localStorage，不发送到服务器（除非你自己部署的后端）
+- **Web 版**：内容保存在浏览器 localStorage，不发送到服务器
+
+详见 [安全说明](security.md)。
+
+### 桌面版和 Web 版怎么选？
+
+参见 [版本功能对比](comparison.md)。
+
+### 如何配置主题颜色？
+
+- **桌面版**：使用 egui 内置深色/浅色方案，暂不支持自定义
+- **Web 版**：修改 `web/style.css` 中的 CSS 变量，参见 [配置参考](configuration.md)
+
+### localStorage 存了哪些数据？
+
+| 键名 | 内容 |
+|------|------|
+| `omd-web-content` | Markdown 文本 |
+| `omd-web-theme` | 主题偏好 |
+| `omd-web-view` | 视图模式 |
+
+### 如何离线使用 Web 版？
+
+1. `cd web && trunk build --release`
+2. 将 `dist/` 部署到本地服务器或直接用浏览器打开
+3. Mermaid 需本地化 CDN，参见 [部署指南](deployment.md)
 
 ### 在哪里报告问题？
 
@@ -185,5 +210,8 @@ rustup target add wasm32-unknown-unknown
 ## 相关文档
 
 - [用户指南](user-guide.md)
+- [安全说明](security.md)
+- [版本功能对比](comparison.md)
+- [配置参考](configuration.md)
 - [路线图](roadmap.md)
 - [开发指南](development.md)
