@@ -1,4 +1,5 @@
 use crate::clipboard;
+use crate::export;
 use crate::find_replace::{self, FindBarState};
 use crate::keybindings::{self, KeybindingMode, KeybindingState, VimMode};
 use crate::line_gutter;
@@ -446,6 +447,26 @@ impl OmdApp {
         }
     }
 
+    fn export_html_as(&mut self) {
+        let title = export::export_title(self.file_path.as_deref(), &self.content);
+        let default_name = export::html_filename(self.file_path.as_deref());
+        let mut dialog = rfd::FileDialog::new()
+            .add_filter("HTML", &["html", "htm"])
+            .set_file_name(&default_name);
+
+        if let Some(dir) = self.file_path.as_ref().and_then(|p| p.parent()) {
+            dialog = dialog.set_directory(dir);
+        }
+
+        if let Some(path) = dialog.save_file() {
+            let html = export::export_html_document(&self.content, &title, self.dark_mode);
+            match std::fs::write(&path, html) {
+                Ok(()) => self.set_status(format!("Exported HTML to {}", path.display())),
+                Err(e) => self.set_status(format!("Export failed: {e}")),
+            }
+        }
+    }
+
     fn toolbar_button(ui: &mut egui::Ui, label: &str, tooltip: &str) -> egui::Response {
         ui.add(egui::Button::new(label).min_size(egui::vec2(32.0, 24.0)))
             .on_hover_text(tooltip)
@@ -454,16 +475,19 @@ impl OmdApp {
     fn render_toolbar(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             if ui.button("📄 New").clicked() {
-                self.new_file();
+                self.request_new_file();
             }
             if ui.button("📂 Open").clicked() {
-                self.open_file();
+                self.request_open_file();
             }
             if ui.button("💾 Save").clicked() {
                 self.save_file();
             }
             if ui.button("💾 Save As").clicked() {
                 self.save_file_as();
+            }
+            if Self::toolbar_button(ui, "📤", "Export HTML").clicked() {
+                self.export_html_as();
             }
 
             ui.separator();
@@ -1122,6 +1146,10 @@ impl eframe::App for OmdApp {
                         }
                         if ui.button("Save As…").clicked() {
                             self.save_file_as();
+                            ui.close_menu();
+                        }
+                        if ui.button("Export HTML…").clicked() {
+                            self.export_html_as();
                             ui.close_menu();
                         }
                         ui.separator();

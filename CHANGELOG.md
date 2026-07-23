@@ -4,11 +4,24 @@
 
 ## [未发布]
 
+## [0.3.0] - 2026-07-23
+
 ### 新增 — 桌面版
 
 - **拖拽插入图片**：将图片文件拖入编辑区，在光标处插入 `![alt](path)`
 - **关闭前未保存确认**：关闭窗口、退出、新建或打开文件时，若有未保存修改则提示保存 / 不保存 / 取消
 - **自动保存到磁盘**：设置项可开启，按延迟将已打开文件写入磁盘（仅对已保存路径的文件生效）
+
+### 新增 — 导出与 Web
+
+- **导出 HTML**（桌面 / Web）：将 Markdown 导出为独立 HTML 文件，含语法高亮与 Mermaid 图表
+- **PWA**（Web）：`manifest.webmanifest`、Service Worker 离线缓存、应用图标，可安装到主屏幕
+- **CI**：`ci.yml` PR/主分支测试与 Web 构建；`pages.yml` 自动部署 Web 到 GitHub Pages
+
+### 变更
+
+- 桌面版 **File → Export HTML…** 与工具栏 **📤** 按钮
+- Web 版头部 **导出 HTML** 按钮（与「下载」并列）
 
 ## [0.2.0] - 2026-07-23
 
@@ -81,6 +94,7 @@
 - 桌面：eframe 0.29、egui 0.29、egui_extras、mermaid-rs-renderer、resvg、arboard、pulldown-cmark 0.12、rfd 0.15
 - Web：Leptos 0.7、pulldown-cmark 0.12、Trunk 0.21、Mermaid.js 11
 
-[未发布]: https://github.com/doshall/omd/compare/v0.2.0...HEAD
+[未发布]: https://github.com/doshall/omd/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/doshall/omd/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/doshall/omd/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/doshall/omd/releases/tag/v0.1.0

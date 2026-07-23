@@ -1,7 +1,7 @@
 use crate::mermaid::MermaidCache;
 use crate::syntax_highlight;
 use egui::{Color32, FontFamily, FontId, RichText, Stroke, Ui};
-use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use pulldown_cmark::{html, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use std::path::{Path, PathBuf};
 
 pub struct PreviewContext<'a> {
@@ -491,6 +491,49 @@ pub fn is_image_path(path: &Path) -> bool {
         .and_then(|ext| ext.to_str())
         .map(|ext| IMAGE_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str()))
         .unwrap_or(false)
+}
+
+/// Convert Markdown to HTML for export (includes Mermaid block transform).
+pub fn markdown_to_html(markdown: &str) -> String {
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_TASKLISTS);
+
+    let parser = Parser::new_ext(markdown, options);
+    let mut html_output = String::new();
+    html::push_html(&mut html_output, parser);
+    transform_mermaid_blocks(&html_output)
+}
+
+fn transform_mermaid_blocks(html: &str) -> String {
+    let marker = "<pre><code class=\"language-mermaid\">";
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+
+    while let Some(start) = rest.find(marker) {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + marker.len()..];
+        if let Some(end) = after.find("</code></pre>") {
+            let code = html_escape_export(&after[..end]);
+            out.push_str("<div class=\"mermaid\">");
+            out.push_str(&code);
+            out.push_str("</div>");
+            rest = &after[end + "</code></pre>".len()..];
+        } else {
+            out.push_str(marker);
+            rest = after;
+            break;
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+fn html_escape_export(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 #[cfg(test)]
