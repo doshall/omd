@@ -656,7 +656,14 @@ impl OmdApp {
 
             if self.editor_settings.keybinding_mode == KeybindingMode::Vim {
                 ui.separator();
-                ui.label(format!("Vim: {}", self.keybinding_state.vim_mode.label()));
+                let mut label = format!("Vim: {}", self.keybinding_state.vim_mode.label());
+                if self.keybinding_state.count > 0 {
+                    label.push_str(&format!(" · {}", self.keybinding_state.count));
+                }
+                if let Some(reg) = self.keybinding_state.macro_recording {
+                    label.push_str(&format!(" · REC @{reg}"));
+                }
+                ui.label(label);
             } else if self.editor_settings.keybinding_mode == KeybindingMode::Emacs {
                 ui.separator();
                 ui.label("Emacs");

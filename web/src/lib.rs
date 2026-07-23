@@ -554,6 +554,9 @@ fn App() -> impl IntoView {
             if let Some(vim_mode) = action.vim_mode {
                 kb.vim_mode = vim_mode;
             }
+            if let Some(hint) = action.hint {
+                set_undo_hint.set(hint);
+            }
             set_keybinding_state.set(kb);
 
             let ta_ref = textarea_ref.clone();
@@ -1202,7 +1205,7 @@ fn App() -> impl IntoView {
                                     <option value="emacs">"Emacs"</option>
                                 </select>
                             </label>
-                            <p class="settings-hint">"Vim: hjkl · i/a · dd/yy/p · Emacs: Ctrl+b/f/n/p/a/e/k/y"</p>
+                            <p class="settings-hint">"Vim: hjkl · 数字前缀 · dd/yy/dw · f/t · . 重复 · qa…q · @a 宏 · Emacs: Ctrl+u · Alt+b/f/< /> · 剪切环"</p>
                             <div class="settings-actions">
                                 <button class="btn btn-primary" type="button"
                                     on:click=move |_| set_settings_open.set(false)>"完成"</button>
@@ -1305,11 +1308,18 @@ fn App() -> impl IntoView {
                     {move || {
                         let (lines, words, chars) = stats();
                         let mode = editor_settings.get().keybinding_mode;
+                        let kb = keybinding_state.get();
                         let mode_label = match mode {
-                            KeybindingMode::Vim => format!(
-                                " · Vim:{}",
-                                keybinding_state.get().vim_mode.label()
-                            ),
+                            KeybindingMode::Vim => {
+                                let mut label = format!(" · Vim:{}", kb.vim_mode.label());
+                                if kb.count > 0 {
+                                    label.push_str(&format!(" · {}", kb.count));
+                                }
+                                if let Some(reg) = kb.macro_recording {
+                                    label.push_str(&format!(" · REC @{reg}"));
+                                }
+                                label
+                            }
                             KeybindingMode::Emacs => " · Emacs".to_string(),
                             KeybindingMode::Standard => String::new(),
                         };

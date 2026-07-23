@@ -104,16 +104,20 @@ pub fn render_settings_window(ctx: &Context, open: &mut bool, settings: &mut Edi
                 });
             if settings.keybinding_mode == KeybindingMode::Vim {
                 ui.label(
-                    egui::RichText::new("Vim: hjkl move · i/a insert · v visual · dd/yy/p")
-                        .small()
-                        .weak(),
+                    egui::RichText::new(
+                        "Vim: hjkl · count prefix · dd/yy/dw · f/t · . repeat · qa…q · @a macro",
+                    )
+                    .small()
+                    .weak(),
                 );
             }
             if settings.keybinding_mode == KeybindingMode::Emacs {
                 ui.label(
-                    egui::RichText::new("Emacs: Ctrl+b/f/n/p/a/e · Ctrl+k kill · Ctrl+y yank")
-                        .small()
-                        .weak(),
+                    egui::RichText::new(
+                        "Emacs: Ctrl+b/f/n/p/a/e · Ctrl+u prefix · Alt+b/f · M-d kill word",
+                    )
+                    .small()
+                    .weak(),
                 );
             }
         });
