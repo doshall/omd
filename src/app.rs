@@ -1,8 +1,10 @@
-use crate::markdown;
+use crate::clipboard;
+use crate::markdown::{self, PreviewContext};
+use crate::mermaid::MermaidCache;
 use eframe::egui;
 use std::path::PathBuf;
 
-const DEFAULT_CONTENT: &str = "# Welcome to omd
+const DEFAULT_CONTENT: &str = r#"# Welcome to omd
 
 **omd** is a lightweight Markdown editor written in Rust.
 
@@ -12,6 +14,8 @@ const DEFAULT_CONTENT: &str = "# Welcome to omd
 - File open / save
 - Toolbar shortcuts
 - Dark & light themes
+- **Mermaid** diagrams
+- **Paste images** from clipboard (`Ctrl+V`)
 
 ## Try it
 
@@ -21,8 +25,16 @@ Edit this document and see the preview update in real time.
 
 ```rust
 fn main() {
-    println!(\"Hello, omd!\");
+    println!("Hello, omd!");
 }
+```
+
+### Mermaid diagram
+
+```mermaid
+flowchart LR
+    A[Edit] --> B[Preview]
+    B --> C[Save]
 ```
 
 ### Table
@@ -32,16 +44,19 @@ fn main() {
 | Editor    | ✅     |
 | Preview   | ✅     |
 | File I/O  | ✅     |
+| Mermaid   | ✅     |
+| Paste img | ✅     |
 
 > Markdown makes writing documentation a pleasure.
 
 - [x] Task list support
-- [ ] More themes (coming soon)
+- [x] Mermaid charts
+- [x] Clipboard image paste
 
 ---
 
 Happy writing! 🦀
-";
+"#;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
@@ -54,6 +69,8 @@ pub struct OmdApp {
     split_ratio: f32,
     status_message: String,
     status_timer: f32,
+    #[serde(skip)]
+    mermaid_cache: MermaidCache,
 }
 
 impl Default for OmdApp {
@@ -67,12 +84,15 @@ impl Default for OmdApp {
             split_ratio: 0.5,
             status_message: String::new(),
             status_timer: 0.0,
+            mermaid_cache: MermaidCache::default(),
         }
     }
 }
 
 impl OmdApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        egui_extras::install_image_loaders(&cc.egui_ctx);
+
         let app: Self = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
@@ -215,6 +235,9 @@ impl OmdApp {
             if Self::toolbar_button(ui, "🔗", "Link ([text](url))").clicked() {
                 self.insert_formatting("[]()");
             }
+            if Self::toolbar_button(ui, "🖼", "Image (![alt](path))").clicked() {
+                self.insert_image();
+            }
 
             ui.separator();
 
@@ -268,6 +291,36 @@ impl OmdApp {
         self.modified = true;
     }
 
+    fn insert_image(&mut self) {
+        let mut dialog = rfd::FileDialog::new().add_filter(
+            "Images",
+            &["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"],
+        );
+        if let Some(dir) = self.file_path.as_ref().and_then(|p| p.parent()) {
+            dialog = dialog.set_directory(dir);
+        }
+        if let Some(path) = dialog.pick_file() {
+            let path_str = path.display().to_string();
+            let alt = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("image");
+            self.content.push_str(&format!("\n![{alt}]({path_str})\n"));
+            self.modified = true;
+            self.set_status(format!("Inserted image: {}", path.display()));
+        }
+    }
+
+    fn try_paste_image(&mut self) -> bool {
+        if let Some(data_url) = clipboard::clipboard_image_data_url() {
+            self.content.push_str(&format!("\n![image]({data_url})\n"));
+            self.modified = true;
+            self.set_status("Pasted image from clipboard");
+            return true;
+        }
+        false
+    }
+
     fn render_editor(&mut self, ui: &mut egui::Ui) {
         let font_id = egui::FontId::monospace(14.0);
         let text_color = ui.visuals().text_color();
@@ -290,14 +343,20 @@ impl OmdApp {
             });
     }
 
-    fn render_preview(&self, ui: &mut egui::Ui) {
+    fn render_preview(&mut self, ui: &mut egui::Ui) {
         let content = self.content.clone();
+        let base_path = self.file_path.as_ref().and_then(|p| p.parent());
+        let mut ctx = PreviewContext {
+            dark_mode: self.dark_mode,
+            base_path,
+            mermaid_cache: &mut self.mermaid_cache,
+        };
         egui::ScrollArea::both()
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.set_max_width(ui.available_width());
                 ui.add_space(8.0);
-                markdown::render_preview(ui, &content);
+                markdown::render_preview(ui, &content, &mut ctx);
             });
     }
 
@@ -335,6 +394,9 @@ impl eframe::App for OmdApp {
 
         ctx.input(|i| {
             if i.modifiers.command || i.modifiers.ctrl {
+                if i.key_pressed(egui::Key::V) {
+                    self.try_paste_image();
+                }
                 if i.key_pressed(egui::Key::S) {
                     if i.modifiers.shift {
                         self.save_file_as();
