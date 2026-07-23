@@ -92,6 +92,7 @@ eframe::NativeOptions {
 | `show_minimap` | `true` | 显示 Minimap |
 | `sync_scroll` | `true` | 分栏时同步滚动 |
 | `preview_syntax_highlight` | `true` | 预览区代码块语法高亮 |
+| `editor_syntax_highlight` | `false` | 编辑区 Markdown 语法高亮 |
 | `focus_mode` | `false` | 专注模式（隐藏工具栏与预览） |
 | `editor_font_size` | `14.0` | 编辑区字号（px） |
 | `editor_line_height` | `1.6` | 编辑区行高倍数 |

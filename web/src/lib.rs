@@ -1,3 +1,4 @@
+mod editor_highlight;
 mod find_replace;
 mod line_gutter;
 mod markdown;
@@ -292,6 +293,7 @@ fn App() -> impl IntoView {
     let (current_line, set_current_line) = signal(0usize);
     let (editor_scroll_top, set_editor_scroll_top) = signal(0.0f64);
     let textarea_ref = NodeRef::<Textarea>::new();
+    let highlight_layer_ref = NodeRef::<Div>::new();
     let line_gutter_ref = NodeRef::<Div>::new();
     let preview_ref = NodeRef::<Div>::new();
     let minimap_ref = NodeRef::<Canvas>::new();
@@ -396,14 +398,21 @@ fn App() -> impl IntoView {
     let on_editor_scroll = {
         let repaint = repaint_minimap.clone();
         let line_gutter_ref = line_gutter_ref.clone();
+        let highlight_layer_ref = highlight_layer_ref.clone();
         let textarea_ref = textarea_ref.clone();
         let preview_ref = preview_ref.clone();
         let view_mode = view_mode.clone();
         let scroll_sync_guard = scroll_sync_guard.clone();
         let set_editor_scroll_top = set_editor_scroll_top.clone();
         move |_| {
-            if let (Some(gutter), Some(ta)) = (line_gutter_ref.get(), textarea_ref.get()) {
-                gutter.set_scroll_top(ta.scroll_top());
+            if let Some(ta) = textarea_ref.get() {
+                if let Some(gutter) = line_gutter_ref.get() {
+                    gutter.set_scroll_top(ta.scroll_top());
+                }
+                if let Some(layer) = highlight_layer_ref.get() {
+                    layer.set_scroll_top(ta.scroll_top());
+                    layer.set_scroll_left(ta.scroll_left());
+                }
                 set_editor_scroll_top.set(ta.scroll_top() as f64);
             }
             if !scroll_sync_guard.get_untracked()
@@ -426,6 +435,7 @@ fn App() -> impl IntoView {
         let textarea_ref = textarea_ref.clone();
         let preview_ref = preview_ref.clone();
         let line_gutter_ref = line_gutter_ref.clone();
+        let highlight_layer_ref = highlight_layer_ref.clone();
         let view_mode = view_mode.clone();
         let scroll_sync_guard = scroll_sync_guard.clone();
         let set_editor_scroll_top = set_editor_scroll_top.clone();
@@ -443,6 +453,10 @@ fn App() -> impl IntoView {
                     sync_scroll::sync_preview_to_editor(&preview, &ta);
                     if let Some(gutter) = line_gutter_ref.get() {
                         gutter.set_scroll_top(ta.scroll_top());
+                    }
+                    if let Some(layer) = highlight_layer_ref.get() {
+                        layer.set_scroll_top(ta.scroll_top());
+                        layer.set_scroll_left(ta.scroll_left());
                     }
                     set_editor_scroll_top.set(ta.scroll_top() as f64);
                     scroll_sync_guard.set(false);
@@ -622,6 +636,13 @@ fn App() -> impl IntoView {
     };
 
     let preview_html = move || markdown::markdown_to_html(&content.get());
+    let editor_highlight_html = move || {
+        if editor_settings.get().editor_syntax_highlight {
+            editor_highlight::lines_to_html(&content.get())
+        } else {
+            String::new()
+        }
+    };
 
     let stats = move || {
         let text = content.get();
@@ -1024,6 +1045,15 @@ fn App() -> impl IntoView {
                                     }
                                 />
                             </label>
+                            <label class="settings-row">
+                                "编辑区语法高亮"
+                                <input type="checkbox" prop:checked=move || editor_settings.get().editor_syntax_highlight
+                                    on:change=move |ev| {
+                                        let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                        set_editor_settings.update(|s| s.editor_syntax_highlight = el.checked());
+                                    }
+                                />
+                            </label>
                             <h3>"预览"</h3>
                             <label class="settings-row">
                                 "同步滚动"
@@ -1127,8 +1157,16 @@ fn App() -> impl IntoView {
                                         }
                                     ></div>
                                 })}
+                                {move || editor_settings.get().editor_syntax_highlight.then(|| view! {
+                                    <div
+                                        class="editor-highlight-layer"
+                                        node_ref=highlight_layer_ref
+                                        inner_html=editor_highlight_html
+                                    ></div>
+                                })}
                                 <textarea
                                     node_ref=textarea_ref
+                                    class:syntax-highlight=move || editor_settings.get().editor_syntax_highlight
                                     prop:value=move || content.get()
                                     on:input=move |ev| {
                                         let el: HtmlTextAreaElement = ev.target().unwrap().unchecked_into();

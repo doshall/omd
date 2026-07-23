@@ -3,6 +3,7 @@
 
 mod app;
 mod clipboard;
+mod editor_highlight;
 mod find_replace;
 mod line_gutter;
 mod markdown;
