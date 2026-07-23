@@ -4,6 +4,7 @@
 mod app;
 mod clipboard;
 mod find_replace;
+mod line_gutter;
 mod markdown;
 mod mermaid;
 mod minimap;
