@@ -75,6 +75,52 @@ html, body {
     justify-content: flex-end;
 }
 
+.find-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.75rem;
+    background: var(--toolbar-bg);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.find-field {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+}
+
+.find-input {
+    width: 10rem;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 0.85rem;
+}
+
+.find-case {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+.find-count {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    min-width: 2.5rem;
+}
+
+.find-close {
+    margin-left: auto;
+}
+
 .toolbar {
     display: flex;
     flex-wrap: wrap;

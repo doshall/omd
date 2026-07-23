@@ -3,6 +3,7 @@
 
 mod app;
 mod clipboard;
+mod find_replace;
 mod markdown;
 mod mermaid;
 mod minimap;

@@ -1,4 +1,5 @@
 use crate::clipboard;
+use crate::find_replace::{self, FindBarState};
 use crate::markdown::{self, PreviewContext};
 use crate::mermaid::MermaidCache;
 use crate::minimap::{self, MinimapAction};
@@ -81,6 +82,8 @@ flowchart LR
 | 另存为 | `Ctrl+Shift+S` | 保存到新路径 |
 | 插入图片 | 工具栏 🖼 | 选择本地图片文件 |
 | 粘贴图片 | `Ctrl+V` | 从剪贴板粘贴截图 |
+| 查找 | `Ctrl+F` | 打开查找栏 |
+| 替换 | `Ctrl+H` | 打开查找替换栏 |
 | 切换主题 | 工具栏 🌙 / ☀️ | 深色 / 浅色模式 |
 | 预览开关 | 工具栏 👁 | 显示 / 隐藏预览区 |
 
@@ -124,6 +127,8 @@ pub struct OmdApp {
     status_timer: f32,
     #[serde(skip)]
     mermaid_cache: MermaidCache,
+    #[serde(skip)]
+    find_bar: FindBarState,
 }
 
 impl Default for OmdApp {
@@ -138,6 +143,7 @@ impl Default for OmdApp {
             status_message: String::new(),
             status_timer: 0.0,
             mermaid_cache: MermaidCache::default(),
+            find_bar: FindBarState::default(),
         }
     }
 }
@@ -374,6 +380,61 @@ impl OmdApp {
         false
     }
 
+    fn handle_find_bar_actions(&mut self, actions: find_replace::FindBarOutput) {
+        if actions.close {
+            self.find_bar.close();
+            return;
+        }
+        if actions.find_next {
+            if !self.find_bar.advance_match(&self.content, true) {
+                self.set_status("No matches found");
+            }
+        }
+        if actions.find_prev {
+            if !self.find_bar.advance_match(&self.content, false) {
+                self.set_status("No matches found");
+            }
+        }
+        if actions.replace_one {
+            let idx = self.find_bar.match_index;
+            if self.find_bar.query.is_empty() {
+                return;
+            }
+            let replacement = self.find_bar.replace.clone();
+            if let Some((start, end)) = find_replace::replace_at(
+                &mut self.content,
+                &self.find_bar.query,
+                &replacement,
+                self.find_bar.case_sensitive,
+                idx,
+            ) {
+                self.modified = true;
+                self.find_bar.pending_selection = Some((start, end));
+                self.find_bar.match_index = idx.min(
+                    self.find_bar.match_ranges(&self.content).len().saturating_sub(1),
+                );
+                self.set_status("Replaced 1 occurrence");
+            } else {
+                self.set_status("No matches found");
+            }
+        }
+        if actions.replace_all {
+            if self.find_bar.query.is_empty() {
+                return;
+            }
+            let replacement = self.find_bar.replace.clone();
+            let count = find_replace::replace_all(
+                &mut self.content,
+                &self.find_bar.query,
+                &replacement,
+                self.find_bar.case_sensitive,
+            );
+            self.modified = count > 0;
+            self.find_bar.reset_match_index();
+            self.set_status(format!("Replaced {count} occurrence(s)"));
+        }
+    }
+
     fn render_editor(&mut self, ui: &mut egui::Ui) {
         let font_id = egui::FontId::monospace(14.0);
         let text_color = ui.visuals().text_color();
@@ -398,6 +459,7 @@ impl OmdApp {
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
                                 let response = egui::TextEdit::multiline(&mut self.content)
+                                    .id_salt(find_replace::EDITOR_ID_SALT)
                                     .font(font_id.clone())
                                     .desired_width(f32::INFINITY)
                                     .lock_focus(true)
@@ -406,6 +468,23 @@ impl OmdApp {
 
                                 if response.response.changed() {
                                     self.modified = true;
+                                }
+
+                                if let Some((start, end)) =
+                                    self.find_bar.pending_selection.take()
+                                {
+                                    let mut state = egui::text_edit::TextEditState::load(
+                                        ui.ctx(),
+                                        response.response.id,
+                                    )
+                                    .unwrap_or_default();
+                                    state.cursor.set_char_range(Some(
+                                        egui::text::CCursorRange::two(
+                                            egui::text::CCursor::new(start),
+                                            egui::text::CCursor::new(end),
+                                        ),
+                                    ));
+                                    state.store(ui.ctx(), response.response.id);
                                 }
                             })
                     },
@@ -493,10 +572,19 @@ impl eframe::App for OmdApp {
             }
         }
 
+        let mut find_next = false;
+        let mut find_prev = false;
+
         ctx.input(|i| {
             if i.modifiers.command || i.modifiers.ctrl {
                 if i.key_pressed(egui::Key::V) {
                     self.try_paste_image();
+                }
+                if i.key_pressed(egui::Key::F) {
+                    self.find_bar.open_find(false);
+                }
+                if i.key_pressed(egui::Key::H) {
+                    self.find_bar.open_find(true);
                 }
                 if i.key_pressed(egui::Key::S) {
                     if i.modifiers.shift {
@@ -512,7 +600,37 @@ impl eframe::App for OmdApp {
                     self.new_file();
                 }
             }
+            if self.find_bar.open {
+                if i.key_pressed(egui::Key::Escape) {
+                    self.find_bar.close();
+                }
+                if i.key_pressed(egui::Key::Enter) {
+                    if i.modifiers.shift {
+                        find_prev = true;
+                    } else {
+                        find_next = true;
+                    }
+                }
+            }
+            if i.key_pressed(egui::Key::F3) {
+                if i.modifiers.shift {
+                    find_prev = true;
+                } else {
+                    find_next = true;
+                }
+            }
         });
+
+        if find_next {
+            if !self.find_bar.advance_match(&self.content, true) {
+                self.set_status("No matches found");
+            }
+        }
+        if find_prev {
+            if !self.find_bar.advance_match(&self.content, false) {
+                self.set_status("No matches found");
+            }
+        }
 
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
@@ -539,6 +657,17 @@ impl eframe::App for OmdApp {
                     }
                 });
 
+                ui.menu_button("Edit", |ui| {
+                    if ui.button("Find…").clicked() {
+                        self.find_bar.open_find(false);
+                        ui.close_menu();
+                    }
+                    if ui.button("Replace…").clicked() {
+                        self.find_bar.open_find(true);
+                        ui.close_menu();
+                    }
+                });
+
                 ui.menu_button("View", |ui| {
                     if ui
                         .checkbox(&mut self.show_preview, "Show Preview")
@@ -561,6 +690,13 @@ impl eframe::App for OmdApp {
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
             self.render_toolbar(ui);
         });
+
+        if self.find_bar.open {
+            egui::TopBottomPanel::top("find_bar").show(ctx, |ui| {
+                let actions = find_replace::render_find_bar(ui, &mut self.find_bar, &self.content);
+                self.handle_find_bar_actions(actions);
+            });
+        }
 
         egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
             self.render_status_bar(ui);
