@@ -1,3 +1,4 @@
+mod find_replace;
 mod markdown;
 mod minimap;
 
@@ -7,7 +8,7 @@ use leptos::prelude::*;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
-use web_sys::{Blob, BlobPropertyBag, HtmlInputElement, HtmlTextAreaElement, MouseEvent};
+use web_sys::{Blob, BlobPropertyBag, HtmlInputElement, HtmlTextAreaElement, KeyboardEvent, MouseEvent};
 
 const STORAGE_CONTENT: &str = "omd-web-content";
 const STORAGE_THEME: &str = "omd-web-theme";
@@ -268,6 +269,12 @@ fn App() -> impl IntoView {
         load_storage(STORAGE_FILENAME).unwrap_or_else(|| "document.md".to_string()),
     );
     let (saved_hint, set_saved_hint) = signal(false);
+    let (find_open, set_find_open) = signal(false);
+    let (find_replace_mode, set_find_replace_mode) = signal(false);
+    let (find_query, set_find_query) = signal(String::new());
+    let (replace_query, set_replace_query) = signal(String::new());
+    let (find_case_sensitive, set_find_case_sensitive) = signal(false);
+    let (find_match_index, set_find_match_index) = signal(0usize);
     let textarea_ref = NodeRef::<Textarea>::new();
     let minimap_ref = NodeRef::<Canvas>::new();
     let minimap_drag = RwSignal::new(false);
@@ -370,6 +377,118 @@ fn App() -> impl IntoView {
 
     let on_minimap_up = move |_: MouseEvent| {
         minimap_drag.set(false);
+    };
+
+    let go_to_find_match = {
+        let content = content.clone();
+        let find_query = find_query.clone();
+        let find_case_sensitive = find_case_sensitive.clone();
+        let textarea_ref = textarea_ref.clone();
+        let set_find_match_index = set_find_match_index.clone();
+        move |index: usize| {
+            let ranges = find_replace::find_ranges(
+                &content.get_untracked(),
+                &find_query.get_untracked(),
+                find_case_sensitive.get_untracked(),
+            );
+            if let Some(&(start, end)) = ranges.get(index) {
+                if let Some(ta) = textarea_ref.get() {
+                    find_replace::select_range(&ta, start, end);
+                }
+                set_find_match_index.set(index);
+            }
+        }
+    };
+
+    let step_find_match = {
+        let go_to_find_match = go_to_find_match.clone();
+        let content = content.clone();
+        let find_query = find_query.clone();
+        let find_case_sensitive = find_case_sensitive.clone();
+        let find_match_index = find_match_index.clone();
+        move |forward: bool| {
+            let ranges = find_replace::find_ranges(
+                &content.get_untracked(),
+                &find_query.get_untracked(),
+                find_case_sensitive.get_untracked(),
+            );
+            if ranges.is_empty() {
+                return;
+            }
+            let idx = find_match_index.get_untracked();
+            let next = if forward {
+                (idx + 1) % ranges.len()
+            } else {
+                (idx + ranges.len() - 1) % ranges.len()
+            };
+            go_to_find_match(next);
+        }
+    };
+
+    Effect::new({
+        let set_find_open = set_find_open.clone();
+        let set_find_replace_mode = set_find_replace_mode.clone();
+        let find_open = find_open.clone();
+        let step_find_match = step_find_match.clone();
+        move |_| {
+            let Some(window) = web_sys::window() else {
+                return;
+            };
+            let set_find_open = set_find_open.clone();
+            let set_find_replace_mode = set_find_replace_mode.clone();
+            let find_open = find_open.clone();
+            let step_find_match = step_find_match.clone();
+            let closure = Closure::wrap(Box::new(move |ev: KeyboardEvent| {
+                let ctrl = ev.ctrl_key() || ev.meta_key();
+                if ctrl && ev.key().eq_ignore_ascii_case("f") {
+                    ev.prevent_default();
+                    set_find_open.set(true);
+                    set_find_replace_mode.set(false);
+                }
+                if ctrl && ev.key().eq_ignore_ascii_case("h") {
+                    ev.prevent_default();
+                    set_find_open.set(true);
+                    set_find_replace_mode.set(true);
+                }
+                if find_open.get_untracked() && ev.key() == "Escape" {
+                    set_find_open.set(false);
+                }
+                if find_open.get_untracked() && ev.key() == "Enter" {
+                    ev.prevent_default();
+                    step_find_match(!ev.shift_key());
+                }
+                if ev.key() == "F3" {
+                    ev.prevent_default();
+                    step_find_match(ev.shift_key());
+                }
+            }) as Box<dyn FnMut(_)>);
+            let _ = window.add_event_listener_with_callback(
+                "keydown",
+                closure.as_ref().unchecked_ref(),
+            );
+            closure.forget();
+        }
+    });
+
+    let find_match_label = move || {
+        let query = find_query.get();
+        if query.is_empty() {
+            return "—".to_string();
+        }
+        let ranges = find_replace::find_ranges(
+            &content.get(),
+            &query,
+            find_case_sensitive.get(),
+        );
+        if ranges.is_empty() {
+            "0/0".to_string()
+        } else {
+            format!(
+                "{}/{}",
+                find_match_index.get() + 1,
+                ranges.len()
+            )
+        }
     };
 
     let preview_html = move || markdown::markdown_to_html(&content.get());
@@ -616,6 +735,103 @@ fn App() -> impl IntoView {
                 <button class=move || format!("btn btn-icon {}", if view_mode.get() == ViewMode::PreviewOnly { "active" } else { "" })
                     on:click=move |_| set_view_mode.set(ViewMode::PreviewOnly) title="仅预览">"👁"</button>
             </div>
+
+            {move || find_open.get().then(|| {
+                let step_find_match = step_find_match.clone();
+                let set_find_open = set_find_open.clone();
+                let set_find_query = set_find_query.clone();
+                let set_replace_query = set_replace_query.clone();
+                let set_find_case_sensitive = set_find_case_sensitive.clone();
+                let set_find_match_index = set_find_match_index.clone();
+                let set_content = set_content.clone();
+                let content = content.clone();
+                let find_query = find_query.clone();
+                let replace_query = replace_query.clone();
+                let find_case_sensitive = find_case_sensitive.clone();
+                let find_match_index = find_match_index.clone();
+                let go_to_find_match = go_to_find_match.clone();
+                view! {
+                    <div class="find-bar">
+                        <label class="find-field">
+                            "查找"
+                            <input
+                                type="text"
+                                class="find-input"
+                                prop:value=move || find_query.get()
+                                on:input=move |ev| {
+                                    let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                    set_find_query.set(el.value());
+                                    set_find_match_index.set(0);
+                                }
+                            />
+                        </label>
+                        <label class="find-case">
+                            <input
+                                type="checkbox"
+                                prop:checked=move || find_case_sensitive.get()
+                                on:change=move |ev| {
+                                    let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                    set_find_case_sensitive.set(el.checked());
+                                    set_find_match_index.set(0);
+                                }
+                            />
+                            "区分大小写"
+                        </label>
+                        <span class="find-count">{find_match_label}</span>
+                        <button class="btn btn-icon" type="button" title="上一个 (Shift+Enter)"
+                            on:click=move |_| step_find_match(false)>"↑"</button>
+                        <button class="btn btn-icon" type="button" title="下一个 (Enter)"
+                            on:click=move |_| step_find_match(true)>"↓"</button>
+                        {move || find_replace_mode.get().then(|| {
+                            let set_content = set_content.clone();
+                            let find_query = find_query.clone();
+                            let replace_query = replace_query.clone();
+                            let find_case_sensitive = find_case_sensitive.clone();
+                            let find_match_index = find_match_index.clone();
+                            let go_to_find_match = go_to_find_match.clone();
+                            view! {
+                                <>
+                                    <label class="find-field">
+                                        "替换"
+                                        <input
+                                            type="text"
+                                            class="find-input"
+                                            prop:value=move || replace_query.get()
+                                            on:input=move |ev| {
+                                                let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                                set_replace_query.set(el.value());
+                                            }
+                                        />
+                                    </label>
+                                    <button class="btn" type="button" on:click=move |_| {
+                                        let mut text = content.get_untracked();
+                                        let idx = find_match_index.get_untracked();
+                                        let q = find_query.get_untracked();
+                                        let r = replace_query.get_untracked();
+                                        let cs = find_case_sensitive.get_untracked();
+                                        if find_replace::replace_at(&mut text, &q, &r, cs, idx).is_some() {
+                                            set_content.set(text.clone());
+                                            let ranges = find_replace::find_ranges(&text, &q, cs);
+                                            let new_idx = idx.min(ranges.len().saturating_sub(1));
+                                            go_to_find_match(new_idx);
+                                        }
+                                    }>"替换"</button>
+                                    <button class="btn" type="button" on:click=move |_| {
+                                        let mut text = content.get_untracked();
+                                        let q = find_query.get_untracked();
+                                        let r = replace_query.get_untracked();
+                                        find_replace::replace_all(&mut text, &q, &r, find_case_sensitive.get_untracked());
+                                        set_content.set(text);
+                                        set_find_match_index.set(0);
+                                    }>"全部替换"</button>
+                                </>
+                            }
+                        })}
+                        <button class="btn btn-icon find-close" type="button" title="关闭 (Esc)"
+                            on:click=move |_| set_find_open.set(false)>"✕"</button>
+                    </div>
+                }
+            })}
 
             <div class=move || format!("main {}", view_mode.get().css_class())>
                 <div class="pane editor-pane">
