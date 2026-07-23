@@ -471,3 +471,48 @@ pub fn line_count(text: &str) -> usize {
         text.lines().count()
     }
 }
+
+/// Insert text at a byte cursor position.
+pub fn insert_at_cursor(text: &str, cursor: usize, insertion: &str) -> String {
+    let cursor = cursor.min(text.len());
+    format!("{}{}{}", &text[..cursor], insertion, &text[cursor..])
+}
+
+/// Build a Markdown image snippet.
+pub fn image_markdown(alt: &str, url: &str) -> String {
+    format!("\n![{alt}]({url})\n")
+}
+
+const IMAGE_EXTENSIONS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"];
+
+/// Whether a path looks like a supported image file.
+pub fn is_image_path(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| IMAGE_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str()))
+        .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn insert_at_cursor_mid_text() {
+        assert_eq!(
+            insert_at_cursor("hello world", 5, "!"),
+            "hello! world"
+        );
+    }
+
+    #[test]
+    fn image_markdown_format() {
+        assert_eq!(image_markdown("alt", "/tmp/a.png"), "\n![alt](/tmp/a.png)\n");
+    }
+
+    #[test]
+    fn is_image_path_checks_extension() {
+        assert!(is_image_path(Path::new("photo.PNG")));
+        assert!(!is_image_path(Path::new("notes.md")));
+    }
+}

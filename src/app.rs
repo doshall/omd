@@ -11,6 +11,19 @@ use crate::sync_scroll::{ScrollMetrics, SyncController};
 use eframe::egui;
 use std::path::PathBuf;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum UnsavedPrompt {
+    Close,
+    New,
+    Open,
+}
+
+enum UnsavedDialogAction {
+    Save,
+    Discard,
+    Cancel,
+}
+
 const DEFAULT_CONTENT: &str = r#"# omd 桌面版功能演示
 
 欢迎使用 **omd** 桌面版 Markdown 编辑器！本文档展示全部功能，可直接编辑体验。
@@ -53,6 +66,7 @@ const DEFAULT_CONTENT: &str = r#"# omd 桌面版功能演示
 - [x] 本地图片插入与预览
 - [x] Mermaid 图表渲染
 - [x] 剪贴板粘贴图片（`Ctrl+V`）
+- [x] 拖拽插入图片
 - [x] 深色 / 浅色主题
 
 ---
@@ -85,7 +99,7 @@ flowchart LR
 | 打开 | `Ctrl+O` / 📂 | 打开 `.md` 文件 |
 | 保存 | `Ctrl+S` / 💾 | 保存当前文件 |
 | 另存为 | `Ctrl+Shift+S` | 保存到新路径 |
-| 插入图片 | 工具栏 🖼 | 选择本地图片文件 |
+| 插入图片 | 工具栏 🖼 / 拖拽 | 选择本地图片或拖入编辑区 |
 | 粘贴图片 | `Ctrl+V` | 从剪贴板粘贴截图 |
 | 查找 | `Ctrl+F` | 打开查找栏 |
 | 替换 | `Ctrl+H` | 打开查找替换栏 |
@@ -145,6 +159,10 @@ pub struct OmdApp {
     editor_text_edit_id: Option<egui::Id>,
     #[serde(skip)]
     last_keybinding_mode: KeybindingMode,
+    #[serde(skip)]
+    unsaved_prompt: Option<UnsavedPrompt>,
+    #[serde(skip)]
+    auto_save_timer: f32,
 }
 
 impl Default for OmdApp {
@@ -166,6 +184,8 @@ impl Default for OmdApp {
             keybinding_state: KeybindingState::default(),
             editor_text_edit_id: None,
             last_keybinding_mode: KeybindingMode::Standard,
+            unsaved_prompt: None,
+            auto_save_timer: 0.0,
         }
     }
 }
@@ -195,6 +215,153 @@ impl OmdApp {
     fn set_status(&mut self, msg: impl Into<String>) {
         self.status_message = msg.into();
         self.status_timer = 4.0;
+    }
+
+    fn mark_modified(&mut self) {
+        self.modified = true;
+        self.auto_save_timer = 0.0;
+    }
+
+    fn request_new_file(&mut self) {
+        if self.modified {
+            self.unsaved_prompt = Some(UnsavedPrompt::New);
+        } else {
+            self.new_file();
+        }
+    }
+
+    fn request_open_file(&mut self) {
+        if self.modified {
+            self.unsaved_prompt = Some(UnsavedPrompt::Open);
+        } else {
+            self.open_file();
+        }
+    }
+
+    fn request_close(&mut self, ctx: &egui::Context) {
+        if self.modified {
+            self.unsaved_prompt = Some(UnsavedPrompt::Close);
+        } else {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+    }
+
+    fn apply_unsaved_prompt(&mut self, ctx: &egui::Context, prompt: UnsavedPrompt) {
+        match prompt {
+            UnsavedPrompt::Close => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
+            UnsavedPrompt::New => self.new_file(),
+            UnsavedPrompt::Open => self.open_file(),
+        }
+    }
+
+    fn fulfill_unsaved_prompt(&mut self, ctx: &egui::Context, action: UnsavedDialogAction) {
+        let Some(prompt) = self.unsaved_prompt.take() else {
+            return;
+        };
+        match action {
+            UnsavedDialogAction::Save => {
+                if !self.save_file() {
+                    self.unsaved_prompt = Some(prompt);
+                    return;
+                }
+                self.apply_unsaved_prompt(ctx, prompt);
+            }
+            UnsavedDialogAction::Discard => self.apply_unsaved_prompt(ctx, prompt),
+            UnsavedDialogAction::Cancel => {}
+        }
+    }
+
+    fn render_unsaved_dialog(&mut self, ctx: &egui::Context) {
+        let Some(prompt) = self.unsaved_prompt else {
+            return;
+        };
+
+        let message = match prompt {
+            UnsavedPrompt::Close => "Save changes before closing?",
+            UnsavedPrompt::New => "Save changes before creating a new file?",
+            UnsavedPrompt::Open => "Save changes before opening another file?",
+        };
+
+        egui::Window::new("Unsaved Changes")
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.label(message);
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui.button("Save").clicked() {
+                        self.fulfill_unsaved_prompt(ctx, UnsavedDialogAction::Save);
+                    }
+                    if ui.button("Don't Save").clicked() {
+                        self.fulfill_unsaved_prompt(ctx, UnsavedDialogAction::Discard);
+                    }
+                    if ui.button("Cancel").clicked() {
+                        self.fulfill_unsaved_prompt(ctx, UnsavedDialogAction::Cancel);
+                    }
+                });
+            });
+    }
+
+    fn tick_auto_save(&mut self, dt: f32) {
+        if !self.editor_settings.auto_save_enabled || !self.modified || self.file_path.is_none() {
+            return;
+        }
+
+        self.auto_save_timer += dt;
+        let interval = self.editor_settings.auto_save_interval_secs.max(1) as f32;
+        if self.auto_save_timer < interval {
+            return;
+        }
+
+        if let Some(path) = self.file_path.clone() {
+            if self.write_to_path(&path) {
+                self.set_status(format!("Auto-saved to {}", path.display()));
+            }
+        }
+        self.auto_save_timer = 0.0;
+    }
+
+    fn handle_dropped_files(&mut self, ctx: &egui::Context) {
+        let dropped: Vec<egui::DroppedFile> =
+            ctx.input(|i| i.raw.dropped_files.clone());
+        if dropped.is_empty() {
+            return;
+        }
+
+        let cursor = self.editor_cursor(ctx);
+        let mut next_cursor = cursor;
+        let mut inserted = 0usize;
+
+        for file in dropped {
+            if let Some(path) = file.path {
+                if !markdown::is_image_path(&path) {
+                    continue;
+                }
+                let path_str = path.display().to_string();
+                let alt = path
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("image");
+                let md = markdown::image_markdown(alt, &path_str);
+                self.content = markdown::insert_at_cursor(&self.content, next_cursor, &md);
+                next_cursor += md.len();
+                inserted += 1;
+            }
+        }
+
+        if inserted > 0 {
+            self.mark_modified();
+            self.set_status(format!("Inserted {inserted} image(s)"));
+        }
+    }
+
+    fn insert_image_markdown(&mut self, ctx: &egui::Context, alt: &str, url: &str) {
+        let cursor = self.editor_cursor(ctx);
+        let md = markdown::image_markdown(alt, url);
+        self.content = markdown::insert_at_cursor(&self.content, cursor, &md);
+        self.mark_modified();
+        self.set_status(format!("Inserted image: {url}"));
     }
 
     fn title(&self) -> String {
@@ -317,7 +484,7 @@ impl OmdApp {
                 self.insert_formatting("[]()");
             }
             if Self::toolbar_button(ui, "🖼", "Image (![alt](path))").clicked() {
-                self.insert_image();
+                self.insert_image(ui.ctx());
             }
 
             ui.separator();
@@ -363,16 +530,16 @@ impl OmdApp {
     fn insert_formatting(&mut self, wrapper: &str) {
         let len = self.content.len();
         markdown::wrap_selection(&mut self.content, 0..len, wrapper);
-        self.modified = true;
+        self.mark_modified();
     }
 
     fn insert_line_prefix(&mut self, prefix: &str) {
         let len = self.content.len();
         markdown::prefix_lines(&mut self.content, 0..len, prefix);
-        self.modified = true;
+        self.mark_modified();
     }
 
-    fn insert_image(&mut self) {
+    fn insert_image(&mut self, ctx: &egui::Context) {
         let mut dialog = rfd::FileDialog::new().add_filter(
             "Images",
             &["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"],
@@ -386,16 +553,13 @@ impl OmdApp {
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("image");
-            self.content.push_str(&format!("\n![{alt}]({path_str})\n"));
-            self.modified = true;
-            self.set_status(format!("Inserted image: {}", path.display()));
+            self.insert_image_markdown(ctx, alt, &path_str);
         }
     }
 
-    fn try_paste_image(&mut self) -> bool {
+    fn try_paste_image(&mut self, ctx: &egui::Context) -> bool {
         if let Some(data_url) = clipboard::clipboard_image_data_url() {
-            self.content.push_str(&format!("\n![image]({data_url})\n"));
-            self.modified = true;
+            self.insert_image_markdown(ctx, "image", &data_url);
             self.set_status("Pasted image from clipboard");
             return true;
         }
@@ -415,7 +579,7 @@ impl OmdApp {
 
     fn apply_key_action(&mut self, ctx: &egui::Context, action: keybindings::KeyAction) {
         if action.content_changed {
-            self.modified = true;
+            self.mark_modified();
         }
         if let Some(status) = action.status {
             self.set_status(status);
@@ -475,7 +639,7 @@ impl OmdApp {
                 self.find_bar.case_sensitive,
                 idx,
             ) {
-                self.modified = true;
+                self.mark_modified();
                 self.find_bar.pending_selection = Some((start, end));
                 self.find_bar.match_index = idx.min(
                     self.find_bar.match_ranges(&self.content).len().saturating_sub(1),
@@ -496,7 +660,9 @@ impl OmdApp {
                 &replacement,
                 self.find_bar.case_sensitive,
             );
-            self.modified = count > 0;
+            if count > 0 {
+                self.mark_modified();
+            }
             self.find_bar.reset_match_index();
             self.set_status(format!("Replaced {count} occurrence(s)"));
         }
@@ -694,7 +860,7 @@ impl OmdApp {
                                     self.editor_text_edit_id = Some(response.id);
 
                                     if response.changed() {
-                                        self.modified = true;
+                                        self.mark_modified();
                                     }
 
                                     if let Some((start, end)) =
@@ -838,6 +1004,18 @@ impl OmdApp {
 impl eframe::App for OmdApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(self.title()));
+
+        let close_requested = ctx.input(|i| i.viewport().close_requested());
+        if close_requested && self.modified {
+            if self.unsaved_prompt.is_none() {
+                self.unsaved_prompt = Some(UnsavedPrompt::Close);
+            }
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+        }
+
+        self.handle_dropped_files(ctx);
+        self.tick_auto_save(ctx.input(|i| i.unstable_dt));
+
         if self.status_timer > 0.0 {
             self.status_timer -= ctx.input(|i| i.unstable_dt);
             if self.status_timer <= 0.0 {
@@ -851,7 +1029,7 @@ impl eframe::App for OmdApp {
         ctx.input(|i| {
             if i.modifiers.command || i.modifiers.ctrl {
                 if i.key_pressed(egui::Key::V) {
-                    self.try_paste_image();
+                    self.try_paste_image(ctx);
                 }
                 if i.key_pressed(egui::Key::F) {
                     self.find_bar.open_find(false);
@@ -867,10 +1045,10 @@ impl eframe::App for OmdApp {
                     }
                 }
                 if i.key_pressed(egui::Key::O) {
-                    self.open_file();
+                    self.request_open_file();
                 }
                 if i.key_pressed(egui::Key::N) {
-                    self.new_file();
+                    self.request_new_file();
                 }
                 if self.editor_settings.show_undo_redo_hint {
                     if i.key_pressed(egui::Key::Z) {
@@ -931,11 +1109,11 @@ impl eframe::App for OmdApp {
                 egui::menu::bar(ui, |ui| {
                     ui.menu_button("File", |ui| {
                         if ui.button("New").clicked() {
-                            self.new_file();
+                            self.request_new_file();
                             ui.close_menu();
                         }
                         if ui.button("Open…").clicked() {
-                            self.open_file();
+                            self.request_open_file();
                             ui.close_menu();
                         }
                         if ui.button("Save").clicked() {
@@ -948,7 +1126,8 @@ impl eframe::App for OmdApp {
                         }
                         ui.separator();
                         if ui.button("Exit").clicked() {
-                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                            self.request_close(ctx);
+                            ui.close_menu();
                         }
                     });
 
@@ -1025,6 +1204,8 @@ impl eframe::App for OmdApp {
         }
 
         settings::render_settings_window(ctx, &mut self.settings_open, &mut self.editor_settings);
+
+        self.render_unsaved_dialog(ctx);
 
         egui::CentralPanel::default().show(ctx, |ui| {
             if focus_mode {

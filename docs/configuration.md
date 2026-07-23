@@ -101,8 +101,18 @@ eframe::NativeOptions {
 | `keybinding_mode` | `"standard"` | 键位模式：`standard` / `vim` / `emacs` |
 | `vim_show_block_highlight` | `true` | Vim 模式下高亮 Visual Block 选区 |
 | `vim_use_system_clipboard` | `true` | Vim 模式下 `"` / `"a` 与系统剪贴板寄存器 `"+` / `"*` 同步 |
+| `auto_save_enabled` | `true` | 自动保存到磁盘（仅已保存路径的文件） |
+| `auto_save_interval_secs` | `30` | 停止编辑后多少秒触发自动保存（5–300） |
 
 打开方式：**View → Settings…**（`F11` 切换专注模式，`Esc` 退出）
+
+#### 文件操作
+
+| 功能 | 说明 |
+|------|------|
+| 拖拽插入图片 | 将 PNG/JPG/GIF/WebP/SVG/BMP 拖入编辑区 |
+| 未保存确认 | 关闭窗口、退出、新建、打开时若有修改会弹出对话框 |
+| 自动保存 | 对已保存到磁盘的文件，在设置延迟后自动写入 |
 
 #### Vim 模式参考
 
