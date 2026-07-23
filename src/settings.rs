@@ -8,6 +8,7 @@ pub struct EditorSettings {
     pub show_minimap: bool,
     pub sync_scroll: bool,
     pub preview_syntax_highlight: bool,
+    pub editor_syntax_highlight: bool,
     pub focus_mode: bool,
     pub editor_font_size: f32,
     pub editor_line_height: f32,
@@ -28,6 +29,7 @@ impl Default for EditorSettings {
             show_minimap: true,
             sync_scroll: true,
             preview_syntax_highlight: true,
+            editor_syntax_highlight: false,
             focus_mode: false,
             editor_font_size: 14.0,
             editor_line_height: 1.6,
@@ -73,6 +75,10 @@ pub fn render_settings_window(ctx: &Context, open: &mut bool, settings: &mut Edi
             ui.checkbox(
                 &mut settings.preview_syntax_highlight,
                 "Syntax highlight code blocks",
+            );
+            ui.checkbox(
+                &mut settings.editor_syntax_highlight,
+                "Syntax highlight in editor",
             );
             ui.add(
                 egui::Slider::new(&mut settings.preview_font_size, 12.0..=22.0)
