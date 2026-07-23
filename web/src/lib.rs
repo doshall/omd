@@ -11,6 +11,7 @@ use web_sys::{Blob, BlobPropertyBag, HtmlInputElement, HtmlTextAreaElement};
 const STORAGE_CONTENT: &str = "omd-web-content";
 const STORAGE_THEME: &str = "omd-web-theme";
 const STORAGE_VIEW: &str = "omd-web-view";
+const STORAGE_FILENAME: &str = "omd-web-filename";
 
 const DEFAULT_CONTENT: &str = r#"# omd Web 功能演示
 
@@ -262,7 +263,9 @@ fn App() -> impl IntoView {
     let (content, set_content) = signal(initial_content);
     let (dark_mode, set_dark_mode) = signal(initial_dark);
     let (view_mode, set_view_mode) = signal(initial_view);
-    let (filename, set_filename) = signal("document.md".to_string());
+    let (filename, set_filename) = signal(
+        load_storage(STORAGE_FILENAME).unwrap_or_else(|| "document.md".to_string()),
+    );
     let (saved_hint, set_saved_hint) = signal(false);
     let textarea_ref = NodeRef::<Textarea>::new();
     let file_input_ref = NodeRef::<Input>::new();
@@ -284,6 +287,8 @@ fn App() -> impl IntoView {
                 ViewMode::PreviewOnly => "preview",
             },
         );
+        let name = filename.get();
+        save_storage(STORAGE_FILENAME, &name);
 
         set_saved_hint.set(true);
         let set_saved_hint = set_saved_hint.clone();

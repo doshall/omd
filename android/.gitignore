@@ -1,0 +1,23 @@
+# Gradle
+.gradle/
+build/
+local.properties
+
+# Android Studio
+.idea/
+*.iml
+.cxx/
+
+# Build outputs
+app/build/
+*.apk
+*.aab
+*.dex
+
+# Keystore (never commit)
+*.jks
+*.keystore
+keystore.properties
+
+# Assets (generated from web/dist)
+app/src/main/assets/

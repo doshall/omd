@@ -5,10 +5,14 @@
 ## [未发布]
 
 ### 新增
-- 完善文档体系：配置参考、API 参考、安全说明、版本对比
-- GitHub Issue/PR 模板
-- SECURITY.md 安全政策
-- 文档中心按角色分类导航、术语表、快速参考卡
+- **Android 版**：WebView 打包 Web 版为 APK，支持离线、文件关联、系统文件选择器
+- 一键构建脚本 `scripts/build-android.sh`
+- Mermaid.js 离线打包（`web/assets/mermaid.min.js`）
+- [Android 版指南](docs/android.md)
+
+### 变更
+- Web 版 `Trunk.toml` 设置 `public_url = "./"` 支持 Android assets 加载
+- Web 版支持 `omd-web-filename` localStorage 键（Android 打开文件时保留文件名）
 
 ## [0.1.0] - 2026-07-23
 
