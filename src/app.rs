@@ -2,46 +2,109 @@ use crate::markdown;
 use eframe::egui;
 use std::path::PathBuf;
 
-const DEFAULT_CONTENT: &str = "# Welcome to omd
+const DEFAULT_CONTENT: &str = r#"# omd 桌面版功能演示
 
-**omd** is a lightweight Markdown editor written in Rust.
-
-## Features
-
-- Live preview
-- File open / save
-- Toolbar shortcuts
-- Dark & light themes
-
-## Try it
-
-Edit this document and see the preview update in real time.
-
-### Code example
-
-```rust
-fn main() {
-    println!(\"Hello, omd!\");
-}
-```
-
-### Table
-
-| Feature   | Status |
-|-----------|--------|
-| Editor    | ✅     |
-| Preview   | ✅     |
-| File I/O  | ✅     |
-
-> Markdown makes writing documentation a pleasure.
-
-- [x] Task list support
-- [ ] More themes (coming soon)
+欢迎使用 **omd** 桌面版 Markdown 编辑器！本文档展示全部功能，可直接编辑体验。
 
 ---
 
-Happy writing! 🦀
-";
+## 1. 文本格式
+
+| 格式 | 语法 | 效果 |
+|------|------|------|
+| 粗体 | `**粗体**` | **粗体** |
+| 斜体 | `*斜体*` | *斜体* |
+| 删除线 | `~~删除~~` | ~~删除~~ |
+| 行内代码 | `` `code` `` | `code` |
+| 链接 | `[文字](url)` | [Rust 官网](https://www.rust-lang.org) |
+
+> 工具栏：**B** 粗体 · **I** 斜体 · **S** 删除线 · **</>** 代码 · **🔗** 链接
+
+---
+
+## 2. 标题与结构
+
+### 三级标题
+#### 四级标题
+
+- 无序列表项 A
+- 无序列表项 B
+
+1. 有序列表第一步
+2. 有序列表第二步
+
+> 引用块：Markdown 让写作更高效。工具栏 **❝** 可快速插入引用。
+
+---
+
+## 3. 任务列表
+
+- [x] 实时分栏预览
+- [x] 文件新建 / 打开 / 保存
+- [x] 本地图片插入与预览
+- [x] 深色 / 浅色主题
+- [ ] 继续探索更多功能…
+
+---
+
+## 4. 代码块
+
+```rust
+fn main() {
+    println!("Hello, omd!");
+}
+```
+
+---
+
+## 5. 表格
+
+| 功能 | 快捷键 / 操作 | 说明 |
+|------|---------------|------|
+| 新建 | `Ctrl+N` / 菜单 | 创建空白文档 |
+| 打开 | `Ctrl+O` / 📂 | 打开 `.md` 文件 |
+| 保存 | `Ctrl+S` / 💾 | 保存当前文件 |
+| 另存为 | `Ctrl+Shift+S` | 保存到新路径 |
+| 插入图片 | 工具栏 🖼 | 选择本地图片文件 |
+| 切换主题 | 工具栏 🌙 / ☀️ | 深色 / 浅色模式 |
+| 预览开关 | 工具栏 👁 | 显示 / 隐藏预览区 |
+
+---
+
+## 6. 图片
+
+### 网络图片
+![Rust Logo](https://www.rust-lang.org/static/images/rust-logo-blk.svg)
+
+### 本地图片
+点击工具栏 **🖼**，选择本地图片文件，将自动插入 `![文件名](路径)` 并在预览区渲染。
+
+支持格式：PNG、JPG、GIF、WebP、SVG、BMP
+
+---
+
+## 7. 分隔线与状态栏
+
+---
+
+底部状态栏实时显示：**行数** · **字数** · **字符数** · 当前文件路径。
+
+窗口标题显示文件名及修改状态（`*` 表示未保存）。
+
+---
+
+## 8. 菜单栏
+
+- **File** — 新建、打开、保存、另存为、退出
+- **View** — 显示预览、深色模式
+- **Help** — 关于 omd
+
+拖拽中间分隔线可调整编辑区与预览区宽度。
+
+---
+
+**开始编辑吧！** 修改任意文字，预览区即时更新。🦀
+"#;
 
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
