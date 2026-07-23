@@ -296,6 +296,7 @@ fn App() -> impl IntoView {
     let (find_case_sensitive, set_find_case_sensitive) = signal(false);
     let (find_match_index, set_find_match_index) = signal(0usize);
     let (current_line, set_current_line) = signal(0usize);
+    let (editor_char_cursor, set_editor_char_cursor) = signal(0usize);
     let (editor_scroll_top, set_editor_scroll_top) = signal(0.0f64);
     let textarea_ref = NodeRef::<Textarea>::new();
     let highlight_layer_ref = NodeRef::<Div>::new();
@@ -414,11 +415,14 @@ fn App() -> impl IntoView {
         let textarea_ref = textarea_ref.clone();
         let content = content.clone();
         let set_current_line = set_current_line.clone();
+        let set_editor_char_cursor = set_editor_char_cursor.clone();
         move || {
             if let Some(ta) = textarea_ref.get() {
                 let offset = ta.selection_start().ok().flatten().unwrap_or(0);
-                let line = line_gutter::line_index_at_utf16(&content.get_untracked(), offset);
+                let text = content.get_untracked();
+                let line = line_gutter::line_index_at_utf16(&text, offset);
                 set_current_line.set(line);
+                set_editor_char_cursor.set(line_gutter::utf16_to_char_index(&text, offset));
             }
         }
     };
@@ -610,6 +614,7 @@ fn App() -> impl IntoView {
             }
             set_keybinding_state.set(kb);
 
+            set_editor_char_cursor.set(action.cursor);
             let ta_ref = textarea_ref.clone();
             let cursor = action.cursor;
             let selection = action.selection;
@@ -1443,6 +1448,52 @@ fn App() -> impl IntoView {
                                                 })
                                                 .collect_view()
                                         })
+                                }}
+                                {move || {
+                                    let settings = editor_settings.get();
+                                    let kb = keybinding_state.get();
+                                    if settings.keybinding_mode != KeybindingMode::Emacs {
+                                        return None;
+                                    }
+                                    let isearch = kb.emacs_isearch?;
+                                    if isearch.query.is_empty() {
+                                        return None;
+                                    }
+                                    let content_val = content.get();
+                                    let matches =
+                                        keybindings::isearch_all_matches(&content_val, &isearch.query);
+                                    let cursor = editor_char_cursor.get();
+                                    let scroll = editor_scroll_top.get();
+                                    let fs = f64::from(settings.editor_font_size);
+                                    let lh = f64::from(settings.editor_line_height);
+                                    Some(
+                                        matches
+                                            .into_iter()
+                                            .map(|(start, end)| {
+                                                let pos = vim_ex::pos_to_block_pos(&content_val, start);
+                                                let end_col = vim_ex::pos_to_block_pos(
+                                                    &content_val,
+                                                    end.saturating_sub(1),
+                                                )
+                                                .col
+                                                    + 1;
+                                                let class = if start == cursor {
+                                                    "isearch-match-current"
+                                                } else {
+                                                    "isearch-match"
+                                                };
+                                                let style = line_gutter::isearch_highlight_style(
+                                                    pos.line,
+                                                    pos.col,
+                                                    end_col,
+                                                    scroll,
+                                                    fs,
+                                                    lh,
+                                                );
+                                                view! { <div class=class style=style></div> }
+                                            })
+                                            .collect_view(),
+                                    )
                                 }}
                                 {move || editor_settings.get().highlight_current_line.then(|| view! {
                                     <div

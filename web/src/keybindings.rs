@@ -929,6 +929,33 @@ fn replay_macro(
     last_action
 }
 
+fn replay_macro_at(
+    content: &mut String,
+    state: &mut KeybindingState,
+    reg: char,
+    cursor: usize,
+) -> bool {
+    let keys = match state.macros.get(&reg) {
+        Some(k) if !k.is_empty() => k.clone(),
+        _ => return false,
+    };
+    state.last_macro = Some(reg);
+    let mut pos = cursor;
+    let mut changed = false;
+    for key_str in keys {
+        let Some((key, shift, alt, ctrl)) = parse_stored_key(&key_str) else {
+            continue;
+        };
+        if let Some(action) = handle_vim(content, state, &key, shift, alt, ctrl, pos, None) {
+            if action.content_changed {
+                changed = true;
+            }
+            pos = action.cursor;
+        }
+    }
+    changed
+}
+
 fn parse_stored_key(s: &str) -> Option<(String, bool, bool, bool)> {
     if let Ok(n) = s.parse::<usize>() {
         return Some((n.to_string(), false, false, false));
@@ -1204,6 +1231,76 @@ fn handle_vim_visual_block(
                 command_result: None,
             });
         }
+        "p" => {
+            let rect = BlockRect::from_positions(anchor, head);
+            let Some(text) = paste_text(state) else {
+                return None;
+            };
+            let new_cursor = vim_ex::paste_block_column(content, rect, &text, false);
+            state.block_head = Some(head);
+            state.active_block = Some(rect);
+            return Some(KeyAction {
+                content_changed: true,
+                cursor: new_cursor,
+                selection: None,
+                block_selection: Some(rect),
+                vim_mode: Some(VimMode::VisualBlock),
+                consume: true,
+                hint: None,
+                command_result: None,
+            });
+        }
+        "P" => {
+            let rect = BlockRect::from_positions(anchor, head);
+            let Some(text) = paste_text(state) else {
+                return None;
+            };
+            let new_cursor = vim_ex::paste_block_column(content, rect, &text, true);
+            state.block_head = Some(head);
+            state.active_block = Some(rect);
+            return Some(KeyAction {
+                content_changed: true,
+                cursor: new_cursor,
+                selection: None,
+                block_selection: Some(rect),
+                vim_mode: Some(VimMode::VisualBlock),
+                consume: true,
+                hint: None,
+                command_result: None,
+            });
+        }
+        "u" => {
+            let rect = BlockRect::from_positions(anchor, head);
+            let new_cursor = vim_ex::transform_case_block(content, rect, false);
+            state.block_head = Some(head);
+            state.active_block = Some(rect);
+            return Some(KeyAction {
+                content_changed: true,
+                cursor: new_cursor,
+                selection: None,
+                block_selection: Some(rect),
+                vim_mode: Some(VimMode::VisualBlock),
+                consume: true,
+                hint: None,
+                command_result: None,
+            });
+        }
+        "U" => {
+            let rect = BlockRect::from_positions(anchor, head);
+            let new_cursor = vim_ex::transform_case_block(content, rect, true);
+            state.block_head = Some(head);
+            state.active_block = Some(rect);
+            return Some(KeyAction {
+                content_changed: true,
+                cursor: new_cursor,
+                selection: None,
+                block_selection: Some(rect),
+                vim_mode: Some(VimMode::VisualBlock),
+                consume: true,
+                hint: None,
+                command_result: None,
+            });
+        }
         _ => {}
     }
 
@@ -1280,7 +1377,12 @@ pub fn execute_command(
             line_numbers: None,
         }
     } else {
-        vim_ex::execute_vim_command(&cmd, content, cursor)
+        let mut replay = |content: &mut String, pos: usize, reg: char| {
+            replay_macro_at(content, state, reg, pos)
+        };
+        let mut replay_slot =
+            Some(&mut replay as &mut dyn FnMut(&mut String, usize, char) -> bool);
+        vim_ex::execute_vim_command_ctx(&cmd, content, cursor, &mut replay_slot)
     };
     let new_cursor = result.cursor.unwrap_or(cursor);
     Some(KeyAction {
@@ -1419,6 +1521,25 @@ fn isearch_action(
         hint: hint.or_else(|| Some(isearch_status(query, forward))),
         command_result: None,
     }
+}
+
+pub fn isearch_all_matches(content: &str, query: &str) -> Vec<(usize, usize)> {
+    if query.is_empty() {
+        return Vec::new();
+    }
+    let q_len = query.chars().count();
+    let total = content.chars().count();
+    if q_len == 0 || total < q_len {
+        return Vec::new();
+    }
+    let max_start = total.saturating_sub(q_len);
+    let mut matches = Vec::new();
+    for i in 0..=max_start {
+        if chars_match_at(content, i, query) {
+            matches.push((i, i + q_len));
+        }
+    }
+    matches
 }
 
 fn handle_emacs_isearch(

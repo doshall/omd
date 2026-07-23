@@ -66,6 +66,21 @@ pub fn block_highlight_style(
     )
 }
 
+pub fn isearch_highlight_style(
+    line: usize,
+    col_start: usize,
+    col_end: usize,
+    scroll_top: f64,
+    font_size: f64,
+    line_height: f64,
+) -> String {
+    let top = highlight_top_px(line, scroll_top, font_size, line_height);
+    let width_cols = col_end.saturating_sub(col_start).max(1);
+    format!(
+        "top:{top}px;left:calc(var(--editor-pad) + {col_start}ch);width:calc({width_cols}ch);height:calc(var(--editor-font-size) * var(--editor-line-height));"
+    )
+}
+
 pub fn set_char_selection(
     textarea: &web_sys::HtmlTextAreaElement,
     content: &str,

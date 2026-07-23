@@ -381,6 +381,22 @@ html, body {
     border-radius: 1px;
 }
 
+.isearch-match {
+    position: absolute;
+    background: color-mix(in srgb, #e6b800 35%, transparent);
+    pointer-events: none;
+    z-index: 0;
+    border-radius: 1px;
+}
+
+.isearch-match-current {
+    position: absolute;
+    background: color-mix(in srgb, var(--accent) 55%, transparent);
+    pointer-events: none;
+    z-index: 0;
+    border-radius: 1px;
+}
+
 .editor-pane textarea {
     position: relative;
     z-index: 1;

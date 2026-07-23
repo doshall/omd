@@ -576,6 +576,42 @@ impl OmdApp {
                                     }
                                 }
 
+                                if self.editor_settings.keybinding_mode == KeybindingMode::Emacs {
+                                    if let Some(ref isearch) = self.keybinding_state.emacs_isearch {
+                                        if !isearch.query.is_empty() {
+                                            let cursor_char = egui::text_edit::TextEditState::load(
+                                                ui.ctx(),
+                                                text_edit_id,
+                                            )
+                                            .and_then(|s| s.cursor.char_range())
+                                            .map(|r| r.primary.index)
+                                            .unwrap_or(0);
+                                            let matches = keybindings::isearch_all_matches(
+                                                &self.content,
+                                                &isearch.query,
+                                            );
+                                            let gutter = if self.editor_settings.show_line_numbers
+                                            {
+                                                line_gutter::GUTTER_WIDTH
+                                            } else {
+                                                0.0
+                                            };
+                                            let char_width = self.editor_settings.editor_font_size;
+                                            line_gutter::paint_isearch_matches(
+                                                ui,
+                                                &self.content,
+                                                &matches,
+                                                cursor_char,
+                                                gutter,
+                                                char_width,
+                                                line_gutter::TEXTEDIT_TOP_PAD,
+                                                line_height,
+                                                4.0,
+                                            );
+                                        }
+                                    }
+                                }
+
                                 ui.horizontal_top(|ui| {
                                     if self.editor_settings.show_line_numbers {
                                         line_gutter::show(
