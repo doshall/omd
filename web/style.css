@@ -306,6 +306,14 @@ html, body {
     z-index: 0;
 }
 
+.vim-block-highlight {
+    position: absolute;
+    background: color-mix(in srgb, var(--accent) 38%, transparent);
+    pointer-events: none;
+    z-index: 0;
+    border-radius: 1px;
+}
+
 .editor-pane textarea {
     position: relative;
     z-index: 1;

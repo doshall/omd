@@ -1,6 +1,6 @@
 use crate::clipboard;
 use crate::find_replace::{self, FindBarState};
-use crate::keybindings::{self, KeybindingMode, KeybindingState};
+use crate::keybindings::{self, KeybindingMode, KeybindingState, VimMode};
 use crate::line_gutter;
 use crate::markdown::{self, PreviewContext};
 use crate::mermaid::MermaidCache;
@@ -547,6 +547,29 @@ impl OmdApp {
                                     );
                                 }
 
+                                if self.editor_settings.keybinding_mode == KeybindingMode::Vim
+                                    && self.editor_settings.vim_show_block_highlight
+                                    && self.keybinding_state.vim_mode == VimMode::VisualBlock
+                                {
+                                    if let Some(block) = self.keybinding_state.active_block {
+                                        let gutter = if self.editor_settings.show_line_numbers {
+                                            line_gutter::GUTTER_WIDTH
+                                        } else {
+                                            0.0
+                                        };
+                                        let char_width = self.editor_settings.editor_font_size;
+                                        line_gutter::paint_block_selection(
+                                            ui,
+                                            block,
+                                            gutter,
+                                            char_width,
+                                            line_gutter::TEXTEDIT_TOP_PAD,
+                                            line_height,
+                                            4.0,
+                                        );
+                                    }
+                                }
+
                                 ui.horizontal_top(|ui| {
                                     if self.editor_settings.show_line_numbers {
                                         line_gutter::show(
@@ -565,6 +588,8 @@ impl OmdApp {
                                         );
                                         self.last_keybinding_mode = self.editor_settings.keybinding_mode;
                                     }
+                                    self.keybinding_state.use_system_clipboard =
+                                        self.editor_settings.vim_use_system_clipboard;
 
                                     if self.editor_settings.keybinding_mode != KeybindingMode::Standard
                                         && !self.find_bar.open

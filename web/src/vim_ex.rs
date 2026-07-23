@@ -149,8 +149,18 @@ impl RegisterFile {
             '"' => Some(&self.unnamed),
             '0' => self.named.get(&'0').map(|s| s.as_str()).or(Some(&self.unnamed)),
             '_' => Some(""),
+            '+' | '*' => self
+                .named
+                .get(&reg)
+                .map(|s| s.as_str())
+                .or(Some(&self.unnamed)),
             c => self.named.get(&c).map(|s| s.as_str()),
         }
+    }
+
+    pub fn store_clipboard_register(&mut self, text: &str) {
+        self.named.insert('+', text.to_string());
+        self.named.insert('*', text.to_string());
     }
 
     pub fn take_pending(&mut self) -> Option<char> {
@@ -205,13 +215,28 @@ pub fn execute_vim_command(cmd: &str, content: &mut String, cursor: usize) -> Vi
 
     if trimmed == "help" || trimmed == "h" {
         return VimCommandResult {
-            status: "Commands: w q wq %s/pat/rep/g [n] set number|nonumber reg".to_string(),
+            status: "Commands: w q wq [n] [a,b]d g/pat/d v/pat/d %s/pat/rep/g set number|nonumber reg".to_string(),
             cursor: None,
             content_changed: false,
             request_save: false,
             line_numbers: None,
         };
     }
+
+    if let Some(result) = parse_global_command(trimmed, content, cursor) {
+        return result;
+    }
+
+    let (range_start, range_end, rest) = parse_line_range(trimmed);
+    if let Some(result) = execute_ranged_command(range_start, range_end, rest, content, cursor) {
+        return result;
+    }
+
+    execute_simple_command(trimmed, content, cursor)
+}
+
+fn execute_simple_command(cmd: &str, content: &mut String, cursor: usize) -> VimCommandResult {
+    let trimmed = cmd;
 
     if trimmed == "w" || trimmed == "write" {
         return VimCommandResult {
@@ -329,6 +354,205 @@ pub fn execute_vim_command(cmd: &str, content: &mut String, cursor: usize) -> Vi
     }
 }
 
+/// Parse optional `start,end` prefix (1-based line numbers).
+fn parse_line_range(cmd: &str) -> (Option<usize>, Option<usize>, &str) {
+    let bytes = cmd.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() && bytes[i].is_ascii_digit() {
+        i += 1;
+    }
+    if i == 0 {
+        return (None, None, cmd);
+    }
+    let start: usize = cmd[..i].parse().unwrap_or(0);
+    if i < bytes.len() && bytes[i] == b',' {
+        let after = &cmd[i + 1..];
+        let end_len = after.chars().take_while(|c| c.is_ascii_digit()).count();
+        if end_len == 0 {
+            return (None, None, cmd);
+        }
+        let end: usize = after[..end_len].parse().unwrap_or(0);
+        let rest = after[end_len..].trim_start();
+        return (Some(start), Some(end), rest);
+    }
+    (Some(start), None, &cmd[i..])
+}
+
+fn execute_ranged_command(
+    range_start: Option<usize>,
+    range_end: Option<usize>,
+    rest: &str,
+    content: &mut String,
+    cursor: usize,
+) -> Option<VimCommandResult> {
+    let (start, end) = match (range_start, range_end) {
+        (Some(s), Some(e)) => (s, e),
+        (Some(n), None) if rest.is_empty() => {
+            return Some(VimCommandResult {
+                status: format!("Line {n}"),
+                cursor: Some(char_index_at_line(content, n.saturating_sub(1))),
+                content_changed: false,
+                request_save: false,
+                line_numbers: None,
+            });
+        }
+        (Some(n), None) if rest == "d" || rest == "delete" => {
+            let (new_cursor, deleted) = delete_line_range(content, n, n);
+            return Some(VimCommandResult {
+                status: format!("{deleted} line(s) deleted"),
+                cursor: Some(new_cursor.min(content.chars().count())),
+                content_changed: deleted > 0,
+                request_save: false,
+                line_numbers: None,
+            });
+        }
+        _ => return None,
+    };
+
+    let cmd = rest.trim();
+    if cmd == "d" || cmd == "delete" {
+        let (new_cursor, deleted) = delete_line_range(content, start, end);
+        return Some(VimCommandResult {
+            status: format!("{deleted} line(s) deleted"),
+            cursor: Some(new_cursor.min(content.chars().count())),
+            content_changed: deleted > 0,
+            request_save: false,
+            line_numbers: None,
+        });
+    }
+
+    if cmd.is_empty() {
+        return Some(VimCommandResult {
+            status: format!("Lines {start}-{end}"),
+            cursor: Some(char_index_at_line(content, start.saturating_sub(1))),
+            content_changed: false,
+            request_save: false,
+            line_numbers: None,
+        });
+    }
+
+    if let Some(result) = parse_substitute(cmd, content, cursor) {
+        return Some(result);
+    }
+
+    None
+}
+
+fn char_index_at_line(content: &str, line: usize) -> usize {
+    let mut current = 0usize;
+    let mut pos = 0usize;
+    for (i, ch) in content.chars().enumerate() {
+        if current == line {
+            return pos;
+        }
+        if ch == '\n' {
+            current += 1;
+            pos = i + 1;
+        }
+    }
+    if current == line {
+        pos
+    } else {
+        content.chars().count()
+    }
+}
+
+fn delete_line_range(content: &mut String, start_line: usize, end_line: usize) -> (usize, usize) {
+    let total = line_count(content);
+    let start = start_line.saturating_sub(1).min(total.saturating_sub(1));
+    let end = end_line.saturating_sub(1).min(total.saturating_sub(1));
+    let lo = start.min(end);
+    let hi = start.max(end);
+    let count = hi - lo + 1;
+    let cursor = char_index_at_line(content, lo);
+    for _ in 0..count {
+        if line_count(content) <= 1 && lo == 0 {
+            content.clear();
+            break;
+        }
+        delete_line_at(content, lo);
+    }
+    (cursor, count)
+}
+
+fn line_count(content: &str) -> usize {
+    if content.is_empty() {
+        1
+    } else {
+        content.chars().filter(|&c| c == '\n').count() + 1
+    }
+}
+
+fn delete_line_at(content: &mut String, line: usize) -> usize {
+    let (start, end) = line_col_range(content, line);
+    let delete_end = if end < content.chars().count() {
+        end + 1
+    } else if start > 0 {
+        start - 1
+    } else {
+        end
+    };
+    let (sb, eb) = char_range_to_bytes(content, start.min(delete_end), end.max(delete_end));
+    let cursor = start.min(delete_end);
+    content.replace_range(sb..eb, "");
+    cursor
+}
+
+fn parse_global_command(cmd: &str, content: &mut String, cursor: usize) -> Option<VimCommandResult> {
+    let invert = cmd.starts_with("v/") || cmd.starts_with("g!");
+    let body = if let Some(rest) = cmd.strip_prefix("g!") {
+        rest
+    } else if let Some(rest) = cmd.strip_prefix("g") {
+        rest
+    } else if let Some(rest) = cmd.strip_prefix("v") {
+        rest
+    } else {
+        return None;
+    };
+
+    let sep = body.chars().next()?;
+    if sep != '/' && sep != '#' {
+        return None;
+    }
+    let after_sep = &body[sep.len_utf8()..];
+    let end = after_sep.find(sep)?;
+    let pattern = &after_sep[..end];
+    let action = after_sep[end + sep.len_utf8()..].trim();
+    if action != "d" && action != "delete" {
+        return Some(VimCommandResult {
+            status: format!("Unsupported global action: {action}"),
+            cursor: Some(cursor),
+            content_changed: false,
+            request_save: false,
+            line_numbers: None,
+        });
+    }
+
+    let mut lines_to_delete = Vec::new();
+    let total = line_count(content);
+    for line in 0..total {
+        let (start, end_idx) = line_col_range(content, line);
+        let line_text: String = content.chars().skip(start).take(end_idx - start).collect();
+        let matches = line_text.contains(pattern);
+        if matches != invert {
+            lines_to_delete.push(line);
+        }
+    }
+
+    let deleted = lines_to_delete.len();
+    for line in lines_to_delete.into_iter().rev() {
+        delete_line_at(content, line);
+    }
+
+    Some(VimCommandResult {
+        status: format!("{deleted} line(s) deleted"),
+        cursor: Some(cursor.min(content.chars().count())),
+        content_changed: deleted > 0,
+        request_save: false,
+        line_numbers: None,
+    })
+}
+
 fn parse_substitute(cmd: &str, content: &mut String, cursor: usize) -> Option<VimCommandResult> {
     let body = cmd.strip_prefix('%')?.strip_prefix('s')?;
     let body = body.strip_prefix('/').or_else(|| body.strip_prefix('#'))?;
@@ -418,5 +642,29 @@ mod tests {
         let mut text = "a\nb\nc".to_string();
         let r = execute_vim_command("2", &mut text, 0);
         assert_eq!(r.cursor, Some(2));
+    }
+
+    #[test]
+    fn deletes_line_range() {
+        let mut text = "a\nb\nc\nd".to_string();
+        let r = execute_vim_command("2,3d", &mut text, 0);
+        assert!(r.content_changed);
+        assert_eq!(text, "a\nd");
+    }
+
+    #[test]
+    fn global_delete_matching_lines() {
+        let mut text = "keep\nTODO fix\nkeep\nTODO bar".to_string();
+        let r = execute_vim_command("g/TODO/d", &mut text, 0);
+        assert!(r.content_changed);
+        assert_eq!(text, "keep\nkeep");
+    }
+
+    #[test]
+    fn inverse_global_delete() {
+        let mut text = "a\nbb\nccc".to_string();
+        let r = execute_vim_command("v/bb/d", &mut text, 0);
+        assert!(r.content_changed);
+        assert_eq!(text, "bb");
     }
 }

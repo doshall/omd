@@ -14,6 +14,10 @@ pub struct EditorSettings {
     pub preview_font_size: f32,
     pub show_undo_redo_hint: bool,
     pub keybinding_mode: KeybindingMode,
+    /// Highlight Visual Block selection (Vim mode only).
+    pub vim_show_block_highlight: bool,
+    /// Sync `"+` / `"*` registers with the system clipboard (Vim mode only).
+    pub vim_use_system_clipboard: bool,
 }
 
 impl Default for EditorSettings {
@@ -30,6 +34,8 @@ impl Default for EditorSettings {
             preview_font_size: 15.0,
             show_undo_redo_hint: true,
             keybinding_mode: KeybindingMode::Standard,
+            vim_show_block_highlight: true,
+            vim_use_system_clipboard: true,
         }
     }
 }
@@ -103,9 +109,17 @@ pub fn render_settings_window(ctx: &Context, open: &mut bool, settings: &mut Edi
                     );
                 });
             if settings.keybinding_mode == KeybindingMode::Vim {
+                ui.checkbox(
+                    &mut settings.vim_show_block_highlight,
+                    "Highlight Visual Block selection",
+                );
+                ui.checkbox(
+                    &mut settings.vim_use_system_clipboard,
+                    "Use system clipboard for \"+ / \"* registers",
+                );
                 ui.label(
                     egui::RichText::new(
-                        "Vim: hjkl · count · dd/dw · Ctrl+V block · :cmd · \"a reg · qa/@a",
+                        "Vim: hjkl · count · dd/dw · Ctrl+V block · :g/pat/d · :cmd · \"a/+/* · qa/@a",
                     )
                     .small()
                     .weak(),

@@ -85,6 +85,8 @@ pub struct KeybindingState {
     pub command_buffer: String,
     pub block_anchor: Option<BlockPos>,
     pub block_head: Option<BlockPos>,
+    pub active_block: Option<BlockRect>,
+    pub use_system_clipboard: bool,
 }
 
 impl KeybindingState {
@@ -365,11 +367,22 @@ fn selection_range(cursor: usize, selection: Option<(usize, usize)>) -> (usize, 
 
 fn yank_into(state: &mut KeybindingState, text: String) {
     let reg = state.registers.take_pending().unwrap_or('"');
-    state.registers.yank(Some(reg), text);
+    state.registers.yank(Some(reg), text.clone());
+    if state.use_system_clipboard {
+        if reg == '"' || reg.is_ascii_lowercase() || reg == '+' || reg == '*' {
+            state.registers.store_clipboard_register(&text);
+            crate::clipboard::set_clipboard_text(&text);
+        }
+    }
 }
 
 fn paste_text(state: &KeybindingState) -> Option<String> {
     let reg = state.registers.pending.unwrap_or('"');
+    if state.use_system_clipboard && (reg == '+' || reg == '*' || reg == '"') {
+        if let Some(text) = crate::clipboard::clipboard_text() {
+            return Some(text);
+        }
+    }
     state.registers.get(reg).map(|s| s.to_string())
 }
 
@@ -830,11 +843,13 @@ pub fn handle_vim(
         let pos = vim_ex::pos_to_block_pos(content, cursor);
         state.block_anchor = Some(pos);
         state.block_head = Some(pos);
+        let rect = BlockRect::from_positions(pos, pos);
+        state.active_block = Some(rect);
         return Some(KeyAction {
             content_changed: false,
             cursor,
             selection: None,
-            block_selection: Some(BlockRect::from_positions(pos, pos)),
+            block_selection: Some(rect),
             vim_mode: Some(VimMode::VisualBlock),
             status: Some("VISUAL BLOCK".to_string()),
             command_result: None,
@@ -1398,6 +1413,7 @@ fn handle_vim_visual_block(
         Key::Escape => {
             state.block_anchor = None;
             state.block_head = None;
+            state.active_block = None;
             return Some(KeyAction {
                 content_changed: false,
                 cursor,
@@ -1413,6 +1429,7 @@ fn handle_vim_visual_block(
             yank_into(state, vim_ex::yank_block(content, rect));
             state.block_anchor = None;
             state.block_head = None;
+            state.active_block = None;
             return Some(KeyAction {
                 content_changed: false,
                 cursor,
@@ -1429,6 +1446,7 @@ fn handle_vim_visual_block(
             let new_cursor = vim_ex::delete_block(content, rect);
             state.block_anchor = None;
             state.block_head = None;
+            state.active_block = None;
             return Some(KeyAction {
                 content_changed: true,
                 cursor: new_cursor,
@@ -1444,6 +1462,7 @@ fn handle_vim_visual_block(
 
     state.block_head = Some(head);
     let rect = BlockRect::from_positions(anchor, head);
+    state.active_block = Some(rect);
     let cursor = vim_ex::block_pos_to_char_index(content, head);
     Some(KeyAction {
         content_changed: false,
@@ -1796,6 +1815,10 @@ pub fn reset_for_mode(state: &mut KeybindingState, mode: KeybindingMode) {
     state.count = 0;
     state.emacs_prefix = None;
     state.macro_recording = None;
+    state.command_buffer.clear();
+    state.block_anchor = None;
+    state.block_head = None;
+    state.active_block = None;
     state.vim_mode = match mode {
         KeybindingMode::Vim => VimMode::Normal,
         _ => VimMode::Insert,

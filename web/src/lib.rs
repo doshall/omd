@@ -1,6 +1,7 @@
 mod find_replace;
 mod vim_ex;
 mod keybindings;
+mod clipboard;
 mod line_gutter;
 mod markdown;
 mod minimap;
@@ -365,6 +366,12 @@ fn App() -> impl IntoView {
     });
 
     Effect::new({
+        move |_| {
+            crate::clipboard::refresh_cache();
+        }
+    });
+
+    Effect::new({
         let command_input_ref = command_input_ref.clone();
         let keybinding_state = keybinding_state.clone();
         move |_| {
@@ -549,6 +556,9 @@ fn App() -> impl IntoView {
             };
 
             let mut kb = keybinding_state.get_untracked();
+            kb.use_system_clipboard = editor_settings
+                .get_untracked()
+                .vim_use_system_clipboard;
             let Some(action) = keybindings::handle_keydown(
                 &mut text,
                 &mut kb,
@@ -854,6 +864,11 @@ fn App() -> impl IntoView {
                         }
                     }
                 }
+                if let Ok(text) = dt.get_data("text/plain") {
+                    if !text.is_empty() {
+                        crate::clipboard::remember_text(&text);
+                    }
+                }
             }
         }
     };
@@ -1075,7 +1090,7 @@ fn App() -> impl IntoView {
                                         });
                                     }
                                 }
-                                placeholder="w · q · 42 · %s/old/new/g · set number · reg"
+                                placeholder="w · q · 42 · 1,5d · g/pat/d · %s/old/new/g · set number · reg"
                             />
                         </label>
                     </div>
@@ -1314,7 +1329,29 @@ fn App() -> impl IntoView {
                                     <option value="emacs">"Emacs"</option>
                                 </select>
                             </label>
-                            <p class="settings-hint">"Vim: hjkl · dd/yy/dw · Ctrl+V 块选择 · : 命令 · \" 寄存器 · qa…q · @a 宏 · :set number · Emacs: Ctrl+u · Alt+b/f/< /> · 剪切环"</p>
+                            {move || (editor_settings.get().keybinding_mode == KeybindingMode::Vim).then(|| view! {
+                                <>
+                                    <label class="settings-row">
+                                        "Visual Block 高亮"
+                                        <input type="checkbox" prop:checked=move || editor_settings.get().vim_show_block_highlight
+                                            on:change=move |ev| {
+                                                let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                                set_editor_settings.update(|s| s.vim_show_block_highlight = el.checked());
+                                            }
+                                        />
+                                    </label>
+                                    <label class="settings-row">
+                                        "系统剪贴板寄存器 (+/*)"
+                                        <input type="checkbox" prop:checked=move || editor_settings.get().vim_use_system_clipboard
+                                            on:change=move |ev| {
+                                                let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                                set_editor_settings.update(|s| s.vim_use_system_clipboard = el.checked());
+                                            }
+                                        />
+                                    </label>
+                                </>
+                            })}
+                            <p class="settings-hint">"Vim: hjkl · dd/yy/dw · Ctrl+V 块选择 · :g/pat/d · :1,5d · : 命令 · \" /+/* 寄存器 · qa…q · @a 宏 · :set number · Emacs: Ctrl+u · Alt+b/f/< /> · 剪切环"</p>
                             <div class="settings-actions">
                                 <button class="btn btn-primary" type="button"
                                     on:click=move |_| set_settings_open.set(false)>"完成"</button>
@@ -1350,6 +1387,33 @@ fn App() -> impl IntoView {
                                 </div>
                             })}
                             <div class="editor-input-wrap">
+                                {move || {
+                                    let settings = editor_settings.get();
+                                    let kb = keybinding_state.get();
+                                    (settings.keybinding_mode == KeybindingMode::Vim
+                                        && settings.vim_show_block_highlight
+                                        && kb.vim_mode == VimMode::VisualBlock)
+                                        .then(|| kb.active_block)
+                                        .flatten()
+                                        .map(|block| {
+                                            let scroll = editor_scroll_top.get();
+                                            let fs = f64::from(settings.editor_font_size);
+                                            let lh = f64::from(settings.editor_line_height);
+                                            (block.line_start..=block.line_end)
+                                                .map(|line| {
+                                                    let style = line_gutter::block_highlight_style(
+                                                        line,
+                                                        block.col_start,
+                                                        block.col_end,
+                                                        scroll,
+                                                        fs,
+                                                        lh,
+                                                    );
+                                                    view! { <div class="vim-block-highlight" style=style></div> }
+                                                })
+                                                .collect_view()
+                                        })
+                                }}
                                 {move || editor_settings.get().highlight_current_line.then(|| view! {
                                     <div
                                         class="current-line-highlight"

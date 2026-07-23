@@ -10,7 +10,7 @@
 - **编辑区与预览区同步滚动**（桌面 / Web / Android）：分栏模式下按滚动比例联动
 - **预览区代码块语法高亮**（桌面 / Web / Android）：基于 syntect / highlight.js
 - **编辑器设置面板**（桌面 / Web / Android）：行号、Minimap、同步滚动、字号行高、专注模式等可配置项
-- **Vim / Emacs 键位模式**（桌面 / Web / Android）：数字前缀、宏、`.` 重复；Vim 扩展含 Visual Block、`: ` 命令行、命名寄存器 `"a`
+- **Vim / Emacs 键位模式**（桌面 / Web / Android）：数字前缀、宏、`.` 重复；Vim 扩展含 Visual Block 高亮、`: ` 命令行（`:g/pat/d`、`:1,5d`）、命名/系统剪贴板寄存器 `"a` / `"+` / `"*`
 - **滚动条 Minimap**（桌面 / Web / Android）：编辑区右侧文档缩略导航，点击或拖拽定位
 - **桌面版 Mermaid**：纯 Rust 渲染（mermaid-rs-renderer + resvg）
 - **桌面版图片粘贴**：`Ctrl+V` 剪贴板截图（Base64 嵌入）

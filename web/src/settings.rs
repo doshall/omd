@@ -30,6 +30,8 @@ pub struct EditorSettings {
     pub preview_font_size: f32,
     pub show_undo_redo_hint: bool,
     pub keybinding_mode: crate::keybindings::KeybindingMode,
+    pub vim_show_block_highlight: bool,
+    pub vim_use_system_clipboard: bool,
 }
 
 impl Default for EditorSettings {
@@ -46,6 +48,8 @@ impl Default for EditorSettings {
             preview_font_size: 15.0,
             show_undo_redo_hint: true,
             keybinding_mode: crate::keybindings::KeybindingMode::Standard,
+            vim_show_block_highlight: true,
+            vim_use_system_clipboard: true,
         }
     }
 }
