@@ -4,6 +4,7 @@ use crate::line_gutter;
 use crate::markdown::{self, PreviewContext};
 use crate::mermaid::MermaidCache;
 use crate::minimap::{self, MinimapAction};
+use crate::settings::{self, EditorSettings};
 use crate::sync_scroll::{ScrollMetrics, SyncController};
 use crate::syntax_highlight;
 use eframe::egui;
@@ -128,6 +129,9 @@ pub struct OmdApp {
     split_ratio: f32,
     status_message: String,
     status_timer: f32,
+    editor_settings: EditorSettings,
+    #[serde(skip)]
+    settings_open: bool,
     #[serde(skip)]
     mermaid_cache: MermaidCache,
     #[serde(skip)]
@@ -147,6 +151,8 @@ impl Default for OmdApp {
             split_ratio: 0.5,
             status_message: String::new(),
             status_timer: 0.0,
+            editor_settings: EditorSettings::default(),
+            settings_open: false,
             mermaid_cache: MermaidCache::default(),
             find_bar: FindBarState::default(),
             sync_scroll: SyncController::default(),
@@ -442,11 +448,12 @@ impl OmdApp {
     }
 
     fn render_editor(&mut self, ui: &mut egui::Ui) -> ScrollMetrics {
-        let font_id = egui::FontId::monospace(14.0);
+        let line_height = self.editor_settings.editor_line_height_px();
+        let font_id = egui::FontId::monospace(self.editor_settings.editor_font_size);
         let text_color = ui.visuals().text_color();
         let available_height = ui.available_height();
         let line_kinds = minimap::analyze_lines(&self.content);
-        let content_height = minimap::content_height_from_lines(line_kinds.len());
+        let content_height = line_kinds.len().max(1) as f32 * line_height;
         let line_count = line_gutter::line_count(&self.content);
         let text_edit_id = ui.id().with(find_replace::EDITOR_ID_SALT);
         let current_line =
@@ -457,8 +464,14 @@ impl OmdApp {
         let mut viewport_height = available_height;
         let mut content_size_y = content_height;
 
+        let minimap_reserve = if self.editor_settings.show_minimap {
+            minimap::MINIMAP_WIDTH + 4.0
+        } else {
+            0.0
+        };
+
         ui.horizontal(|ui| {
-            let editor_width = (ui.available_width() - minimap::MINIMAP_WIDTH - 4.0).max(120.0);
+            let editor_width = (ui.available_width() - minimap_reserve).max(120.0);
 
             let scroll = ui
                 .allocate_ui_with_layout(
@@ -470,15 +483,26 @@ impl OmdApp {
                             .auto_shrink([false, false])
                             .show(ui, |ui| {
                                 let content_width = ui.available_width();
-                                line_gutter::paint_current_line_highlight(
-                                    ui,
-                                    current_line,
-                                    content_width,
-                                    line_gutter::TEXTEDIT_TOP_PAD,
-                                );
+                                if self.editor_settings.highlight_current_line {
+                                    line_gutter::paint_current_line_highlight(
+                                        ui,
+                                        current_line,
+                                        content_width,
+                                        line_gutter::TEXTEDIT_TOP_PAD,
+                                        line_height,
+                                    );
+                                }
 
                                 ui.horizontal_top(|ui| {
-                                    line_gutter::show(ui, line_count, current_line, &font_id);
+                                    if self.editor_settings.show_line_numbers {
+                                        line_gutter::show(
+                                            ui,
+                                            line_count,
+                                            current_line,
+                                            &font_id,
+                                            line_height,
+                                        );
+                                    }
 
                                     let response = egui::TextEdit::multiline(&mut self.content)
                                         .id_salt(find_replace::EDITOR_ID_SALT)
@@ -520,30 +544,32 @@ impl OmdApp {
             viewport_height = scroll.inner_rect.height();
             content_size_y = scroll.content_size.y;
 
-            let minimap_action = ui
-                .allocate_ui_with_layout(
-                    egui::vec2(minimap::MINIMAP_WIDTH, available_height),
-                    egui::Layout::top_down(egui::Align::LEFT),
-                    |ui| {
-                        minimap::show_minimap(
-                            ui,
-                            &line_kinds,
-                            scroll_offset_y,
-                            viewport_height,
-                            content_height,
-                        )
-                    },
-                )
-                .inner;
+            if self.editor_settings.show_minimap {
+                let minimap_action = ui
+                    .allocate_ui_with_layout(
+                        egui::vec2(minimap::MINIMAP_WIDTH, available_height),
+                        egui::Layout::top_down(egui::Align::LEFT),
+                        |ui| {
+                            minimap::show_minimap(
+                                ui,
+                                &line_kinds,
+                                scroll_offset_y,
+                                viewport_height,
+                                content_height,
+                            )
+                        },
+                    )
+                    .inner;
 
-            if let MinimapAction::ScrollToRatio(ratio) = minimap_action {
-                minimap::apply_scroll_ratio(
-                    ui.ctx(),
-                    scroll_id,
-                    ratio,
-                    content_height,
-                    viewport_height,
-                );
+                if let MinimapAction::ScrollToRatio(ratio) = minimap_action {
+                    minimap::apply_scroll_ratio(
+                        ui.ctx(),
+                        scroll_id,
+                        ratio,
+                        content_height,
+                        viewport_height,
+                    );
+                }
             }
         });
 
@@ -562,6 +588,8 @@ impl OmdApp {
             dark_mode: self.dark_mode,
             base_path,
             mermaid_cache: &mut self.mermaid_cache,
+            preview_syntax_highlight: self.editor_settings.preview_syntax_highlight,
+            preview_font_size: self.editor_settings.preview_font_size,
         };
         let scroll = egui::ScrollArea::both()
             .id_salt("omd_preview_scroll")
@@ -639,6 +667,24 @@ impl eframe::App for OmdApp {
                 if i.key_pressed(egui::Key::N) {
                     self.new_file();
                 }
+                if self.editor_settings.show_undo_redo_hint {
+                    if i.key_pressed(egui::Key::Z) {
+                        if i.modifiers.shift {
+                            self.set_status("Redo");
+                        } else {
+                            self.set_status("Undo");
+                        }
+                    }
+                    if i.key_pressed(egui::Key::Y) {
+                        self.set_status("Redo");
+                    }
+                }
+            }
+            if i.key_pressed(egui::Key::F11) {
+                self.editor_settings.focus_mode = !self.editor_settings.focus_mode;
+            }
+            if self.editor_settings.focus_mode && i.key_pressed(egui::Key::Escape) {
+                self.editor_settings.focus_mode = false;
             }
             if self.find_bar.open {
                 if i.key_pressed(egui::Key::Escape) {
@@ -672,77 +718,98 @@ impl eframe::App for OmdApp {
             }
         }
 
-        egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
-            egui::menu::bar(ui, |ui| {
-                ui.menu_button("File", |ui| {
-                    if ui.button("New").clicked() {
-                        self.new_file();
-                        ui.close_menu();
-                    }
-                    if ui.button("Open…").clicked() {
-                        self.open_file();
-                        ui.close_menu();
-                    }
-                    if ui.button("Save").clicked() {
-                        self.save_file();
-                        ui.close_menu();
-                    }
-                    if ui.button("Save As…").clicked() {
-                        self.save_file_as();
-                        ui.close_menu();
-                    }
-                    ui.separator();
-                    if ui.button("Exit").clicked() {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                    }
-                });
+        let focus_mode = self.editor_settings.focus_mode;
+        let show_chrome = !focus_mode;
 
-                ui.menu_button("Edit", |ui| {
-                    if ui.button("Find…").clicked() {
-                        self.find_bar.open_find(false);
-                        ui.close_menu();
-                    }
-                    if ui.button("Replace…").clicked() {
-                        self.find_bar.open_find(true);
-                        ui.close_menu();
-                    }
-                });
+        if show_chrome {
+            egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
+                egui::menu::bar(ui, |ui| {
+                    ui.menu_button("File", |ui| {
+                        if ui.button("New").clicked() {
+                            self.new_file();
+                            ui.close_menu();
+                        }
+                        if ui.button("Open…").clicked() {
+                            self.open_file();
+                            ui.close_menu();
+                        }
+                        if ui.button("Save").clicked() {
+                            self.save_file();
+                            ui.close_menu();
+                        }
+                        if ui.button("Save As…").clicked() {
+                            self.save_file_as();
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        if ui.button("Exit").clicked() {
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                        }
+                    });
 
-                ui.menu_button("View", |ui| {
-                    if ui
-                        .checkbox(&mut self.show_preview, "Show Preview")
-                        .changed()
-                    {}
-                    if ui.checkbox(&mut self.dark_mode, "Dark Mode").changed() {
-                        self.apply_theme(ctx);
-                    }
-                });
+                    ui.menu_button("Edit", |ui| {
+                        if ui.button("Find…").clicked() {
+                            self.find_bar.open_find(false);
+                            ui.close_menu();
+                        }
+                        if ui.button("Replace…").clicked() {
+                            self.find_bar.open_find(true);
+                            ui.close_menu();
+                        }
+                    });
 
-                ui.menu_button("Help", |ui| {
-                    if ui.button("About omd").clicked() {
-                        self.set_status("omd v0.1.0 — Rust Markdown Editor");
-                        ui.close_menu();
-                    }
+                    ui.menu_button("View", |ui| {
+                        if ui
+                            .checkbox(&mut self.show_preview, "Show Preview")
+                            .changed()
+                        {}
+                        if ui.checkbox(&mut self.dark_mode, "Dark Mode").changed() {
+                            self.apply_theme(ctx);
+                        }
+                        ui.separator();
+                        if ui.button("Settings…").clicked() {
+                            self.settings_open = true;
+                            ui.close_menu();
+                        }
+                    });
+
+                    ui.menu_button("Help", |ui| {
+                        if ui.button("About omd").clicked() {
+                            self.set_status("omd v0.1.0 — Rust Markdown Editor");
+                            ui.close_menu();
+                        }
+                    });
                 });
             });
-        });
+        }
 
-        egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
-            self.render_toolbar(ui);
-        });
+        if show_chrome {
+            egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
+                self.render_toolbar(ui);
+            });
+        }
 
-        if self.find_bar.open {
+        if show_chrome && self.find_bar.open {
             egui::TopBottomPanel::top("find_bar").show(ctx, |ui| {
                 let actions = find_replace::render_find_bar(ui, &mut self.find_bar, &self.content);
                 self.handle_find_bar_actions(actions);
             });
         }
 
-        egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
-            self.render_status_bar(ui);
-        });
+        if show_chrome {
+            egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
+                self.render_status_bar(ui);
+            });
+        }
+
+        settings::render_settings_window(ctx, &mut self.settings_open, &mut self.editor_settings);
 
         egui::CentralPanel::default().show(ctx, |ui| {
+            if focus_mode {
+                self.render_editor(ui);
+                return;
+            }
+
             if self.show_preview {
                 let available = ui.available_width();
                 let left_width = available * self.split_ratio;
@@ -783,8 +850,10 @@ impl eframe::App for OmdApp {
                         },
                     );
 
-                    self.sync_scroll
-                        .sync(ui.ctx(), editor_metrics, preview_metrics);
+                    if self.editor_settings.sync_scroll {
+                        self.sync_scroll
+                            .sync(ui.ctx(), editor_metrics, preview_metrics);
+                    }
                 });
             } else {
                 ui.heading("Editor");

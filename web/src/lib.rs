@@ -2,6 +2,7 @@ mod find_replace;
 mod line_gutter;
 mod markdown;
 mod minimap;
+mod settings;
 mod sync_scroll;
 
 use leptos::ev::Event;
@@ -16,6 +17,8 @@ const STORAGE_CONTENT: &str = "omd-web-content";
 const STORAGE_THEME: &str = "omd-web-theme";
 const STORAGE_VIEW: &str = "omd-web-view";
 const STORAGE_FILENAME: &str = "omd-web-filename";
+
+use settings::EditorSettings;
 
 const DEFAULT_CONTENT: &str = r#"# omd Web 功能演示
 
@@ -265,11 +268,17 @@ fn App() -> impl IntoView {
         _ => ViewMode::Split,
     };
 
+    let initial_settings = EditorSettings::load();
+    settings::apply_editor_css(&initial_settings);
+
     apply_theme(initial_dark);
 
     let (content, set_content) = signal(initial_content);
     let (dark_mode, set_dark_mode) = signal(initial_dark);
     let (view_mode, set_view_mode) = signal(initial_view);
+    let (editor_settings, set_editor_settings) = signal(initial_settings);
+    let (settings_open, set_settings_open) = signal(false);
+    let (undo_hint, set_undo_hint) = signal(String::new());
     let (filename, set_filename) = signal(
         load_storage(STORAGE_FILENAME).unwrap_or_else(|| "document.md".to_string()),
     );
@@ -318,14 +327,35 @@ fn App() -> impl IntoView {
         });
     });
 
+    Effect::new(move |_| {
+        let s = editor_settings.get();
+        s.save();
+        settings::apply_editor_css(&s);
+    });
+
+    Effect::new(move |_| {
+        let hint = undo_hint.get();
+        if hint.is_empty() {
+            return;
+        }
+        let set_undo_hint = set_undo_hint.clone();
+        spawn_local(async move {
+            gloo_timers::future::TimeoutFuture::new(1500).await;
+            set_undo_hint.set(String::new());
+        });
+    });
+
     // Render mermaid diagrams after preview updates
     Effect::new(move |_| {
         let _ = content.get();
         let _ = dark_mode.get();
+        let syntax = editor_settings.get().preview_syntax_highlight;
         spawn_local(async move {
             gloo_timers::future::TimeoutFuture::new(50).await;
             omd_render_mermaid();
-            omd_highlight_code();
+            if syntax {
+                omd_highlight_code();
+            }
         });
     });
 
@@ -378,6 +408,7 @@ fn App() -> impl IntoView {
             }
             if !scroll_sync_guard.get_untracked()
                 && view_mode.get_untracked() == ViewMode::Split
+                && editor_settings.get_untracked().sync_scroll
             {
                 if let (Some(ta), Some(preview_el)) = (textarea_ref.get(), preview_ref.get()) {
                     if let Some(preview) = sync_scroll::as_html_element(&preview_el) {
@@ -402,6 +433,7 @@ fn App() -> impl IntoView {
         move |_| {
             if scroll_sync_guard.get_untracked()
                 || view_mode.get_untracked() != ViewMode::Split
+                || !editor_settings.get_untracked().sync_scroll
             {
                 return;
             }
@@ -762,7 +794,7 @@ fn App() -> impl IntoView {
     };
 
     view! {
-        <div id="app">
+        <div id="app" class=move || if editor_settings.get().focus_mode { "focus-mode" } else { "" }>
             <header class="header">
                 <h1><span>"omd"</span>" Web"</h1>
                 <div class="header-actions">
@@ -778,6 +810,8 @@ fn App() -> impl IntoView {
                     <button class="btn btn-primary" on:click=move |_| {
                         download_file(&content.get(), &filename.get());
                     }>"下载"</button>
+                    <button class="btn btn-icon" title="设置"
+                        on:click=move |_| set_settings_open.set(true)>"⚙"</button>
                     <button class="btn btn-icon" title="切换主题"
                         on:click=move |_| {
                             let next = !dark_mode.get();
@@ -931,42 +965,168 @@ fn App() -> impl IntoView {
                 }
             })}
 
+            {move || settings_open.get().then(|| {
+                let set_editor_settings = set_editor_settings.clone();
+                let set_settings_open = set_settings_open.clone();
+                view! {
+                    <div class="settings-backdrop" on:click=move |_| set_settings_open.set(false)>
+                        <div class="settings-panel" on:click=move |ev: MouseEvent| { ev.stop_propagation(); }>
+                            <h2>"编辑器设置"</h2>
+                            <h3>"编辑区"</h3>
+                            <label class="settings-row">
+                                "显示行号"
+                                <input type="checkbox" prop:checked=move || editor_settings.get().show_line_numbers
+                                    on:change=move |ev| {
+                                        let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                        set_editor_settings.update(|s| s.show_line_numbers = el.checked());
+                                    }
+                                />
+                            </label>
+                            <label class="settings-row">
+                                "高亮当前行"
+                                <input type="checkbox" prop:checked=move || editor_settings.get().highlight_current_line
+                                    on:change=move |ev| {
+                                        let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                        set_editor_settings.update(|s| s.highlight_current_line = el.checked());
+                                    }
+                                />
+                            </label>
+                            <label class="settings-row">
+                                "显示 Minimap"
+                                <input type="checkbox" prop:checked=move || editor_settings.get().show_minimap
+                                    on:change=move |ev| {
+                                        let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                        set_editor_settings.update(|s| s.show_minimap = el.checked());
+                                    }
+                                />
+                            </label>
+                            <label class="settings-row">
+                                "字号"
+                                <input type="range" min="10" max="24" step="1"
+                                    prop:value=move || editor_settings.get().editor_font_size.to_string()
+                                    on:input=move |ev| {
+                                        let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                        if let Ok(v) = el.value().parse::<f32>() {
+                                            set_editor_settings.update(|s| s.editor_font_size = v);
+                                        }
+                                    }
+                                />
+                            </label>
+                            <label class="settings-row">
+                                "行高"
+                                <input type="range" min="12" max="22" step="1"
+                                    prop:value=move || (editor_settings.get().editor_line_height * 10.0).round().to_string()
+                                    on:input=move |ev| {
+                                        let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                        if let Ok(v) = el.value().parse::<f32>() {
+                                            set_editor_settings.update(|s| s.editor_line_height = v / 10.0);
+                                        }
+                                    }
+                                />
+                            </label>
+                            <h3>"预览"</h3>
+                            <label class="settings-row">
+                                "同步滚动"
+                                <input type="checkbox" prop:checked=move || editor_settings.get().sync_scroll
+                                    on:change=move |ev| {
+                                        let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                        set_editor_settings.update(|s| s.sync_scroll = el.checked());
+                                    }
+                                />
+                            </label>
+                            <label class="settings-row">
+                                "代码块语法高亮"
+                                <input type="checkbox" prop:checked=move || editor_settings.get().preview_syntax_highlight
+                                    on:change=move |ev| {
+                                        let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                        set_editor_settings.update(|s| s.preview_syntax_highlight = el.checked());
+                                    }
+                                />
+                            </label>
+                            <label class="settings-row">
+                                "预览字号"
+                                <input type="range" min="12" max="22" step="1"
+                                    prop:value=move || editor_settings.get().preview_font_size.to_string()
+                                    on:input=move |ev| {
+                                        let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                        if let Ok(v) = el.value().parse::<f32>() {
+                                            set_editor_settings.update(|s| s.preview_font_size = v);
+                                        }
+                                    }
+                                />
+                            </label>
+                            <h3>"专注与提示"</h3>
+                            <label class="settings-row">
+                                "专注模式"
+                                <input type="checkbox" prop:checked=move || editor_settings.get().focus_mode
+                                    on:change=move |ev| {
+                                        let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                        set_editor_settings.update(|s| s.focus_mode = el.checked());
+                                    }
+                                />
+                            </label>
+                            <p class="settings-hint">"快捷键：F11 切换，Esc 退出"</p>
+                            <label class="settings-row">
+                                "撤销/重做提示"
+                                <input type="checkbox" prop:checked=move || editor_settings.get().show_undo_redo_hint
+                                    on:change=move |ev| {
+                                        let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                        set_editor_settings.update(|s| s.show_undo_redo_hint = el.checked());
+                                    }
+                                />
+                            </label>
+                            <div class="settings-actions">
+                                <button class="btn btn-primary" type="button"
+                                    on:click=move |_| set_settings_open.set(false)>"完成"</button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            })}
+
             <div class=move || format!("main {}", view_mode.get().css_class())>
                 <div class="pane editor-pane">
                     <div class="pane-header">"编辑"</div>
                     <div class="editor-with-minimap">
                         <div class="editor-with-gutter">
-                            <div class="line-gutter" node_ref=line_gutter_ref>
-                                {move || {
-                                    let count = line_gutter::line_count(&content.get());
-                                    let active = current_line.get();
-                                    (0..count)
-                                        .map(|line| {
-                                            let class = if line == active {
-                                                "line active"
-                                            } else {
-                                                "line"
-                                            };
-                                            view! {
-                                                <div class=class>{line + 1}</div>
-                                            }
-                                        })
-                                        .collect_view()
-                                }}
-                            </div>
+                            {move || editor_settings.get().show_line_numbers.then(|| view! {
+                                <div class="line-gutter" node_ref=line_gutter_ref>
+                                    {move || {
+                                        let count = line_gutter::line_count(&content.get());
+                                        let active = current_line.get();
+                                        (0..count)
+                                            .map(|line| {
+                                                let class = if line == active {
+                                                    "line active"
+                                                } else {
+                                                    "line"
+                                                };
+                                                view! {
+                                                    <div class=class>{line + 1}</div>
+                                                }
+                                            })
+                                            .collect_view()
+                                    }}
+                                </div>
+                            })}
                             <div class="editor-input-wrap">
-                                <div
-                                    class="current-line-highlight"
-                                    style:top=move || {
-                                        format!(
-                                            "{}px",
-                                            line_gutter::highlight_top_px(
-                                                current_line.get(),
-                                                editor_scroll_top.get(),
+                                {move || editor_settings.get().highlight_current_line.then(|| view! {
+                                    <div
+                                        class="current-line-highlight"
+                                        style:top=move || {
+                                            let s = editor_settings.get();
+                                            format!(
+                                                "{}px",
+                                                line_gutter::highlight_top_px(
+                                                    current_line.get(),
+                                                    editor_scroll_top.get(),
+                                                    f64::from(s.editor_font_size),
+                                                    f64::from(s.editor_line_height),
+                                                )
                                             )
-                                        )
-                                    }
-                                ></div>
+                                        }
+                                    ></div>
+                                })}
                                 <textarea
                                     node_ref=textarea_ref
                                     prop:value=move || content.get()
@@ -974,6 +1134,28 @@ fn App() -> impl IntoView {
                                         let el: HtmlTextAreaElement = ev.target().unwrap().unchecked_into();
                                         set_content.set(el.value());
                                         update_cursor_line();
+                                    }
+                                    on:keydown=move |ev: KeyboardEvent| {
+                                        if ev.key() == "F11" {
+                                            ev.prevent_default();
+                                            set_editor_settings.update(|s| s.focus_mode = !s.focus_mode);
+                                        }
+                                        if editor_settings.get_untracked().focus_mode && ev.key() == "Escape" {
+                                            set_editor_settings.update(|s| s.focus_mode = false);
+                                        }
+                                        if editor_settings.get_untracked().show_undo_redo_hint
+                                            && (ev.ctrl_key() || ev.meta_key())
+                                        {
+                                            if ev.key() == "z" {
+                                                set_undo_hint.set(if ev.shift_key() {
+                                                    "重做".to_string()
+                                                } else {
+                                                    "撤销".to_string()
+                                                });
+                                            } else if ev.key() == "y" {
+                                                set_undo_hint.set("重做".to_string());
+                                            }
+                                        }
                                     }
                                     on:scroll=on_editor_scroll
                                     on:click=on_editor_click
@@ -987,14 +1169,16 @@ fn App() -> impl IntoView {
                                 ></textarea>
                             </div>
                         </div>
-                        <canvas
-                            node_ref=minimap_ref
-                            class="editor-minimap"
-                            on:mousedown=on_minimap_down
-                            on:mousemove=on_minimap_move
-                            on:mouseup=on_minimap_up
-                            on:mouseleave=on_minimap_up
-                        ></canvas>
+                        {move || editor_settings.get().show_minimap.then(|| view! {
+                            <canvas
+                                node_ref=minimap_ref
+                                class="editor-minimap"
+                                on:mousedown=on_minimap_down
+                                on:mousemove=on_minimap_move
+                                on:mouseup=on_minimap_up
+                                on:mouseleave=on_minimap_up
+                            ></canvas>
+                        })}
                     </div>
                 </div>
                 <div class="divider"></div>
@@ -1017,7 +1201,14 @@ fn App() -> impl IntoView {
                     }}
                 </span>
                 <span>
-                    {move || filename.get()}
+                    {move || {
+                        let hint = undo_hint.get();
+                        if hint.is_empty() {
+                            filename.get()
+                        } else {
+                            format!("{} · {}", filename.get(), hint)
+                        }
+                    }}
                     <span class=move || format!("saved-hint {}", if saved_hint.get() { "show" } else { "" })>
                         " · 已自动保存"
                     </span>

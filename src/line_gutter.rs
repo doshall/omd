@@ -1,4 +1,3 @@
-use crate::minimap::EDITOR_LINE_HEIGHT;
 use egui::{Align2, FontId, Id, Sense, Ui, Vec2};
 
 pub const GUTTER_WIDTH: f32 = 48.0;
@@ -36,11 +35,12 @@ pub fn paint_current_line_highlight(
     current_line: usize,
     width: f32,
     top_pad: f32,
+    line_height: f32,
 ) {
-    let y = top_pad + current_line as f32 * EDITOR_LINE_HEIGHT;
+    let y = top_pad + current_line as f32 * line_height;
     let rect = egui::Rect::from_min_size(
         egui::pos2(ui.min_rect().left(), ui.min_rect().top() + y),
-        egui::vec2(width, EDITOR_LINE_HEIGHT),
+        egui::vec2(width, line_height),
     );
     ui.painter().rect_filled(
         rect,
@@ -49,20 +49,26 @@ pub fn paint_current_line_highlight(
     );
 }
 
-pub fn show(ui: &mut Ui, line_count: usize, current_line: usize, font_id: &FontId) {
+pub fn show(
+    ui: &mut Ui,
+    line_count: usize,
+    current_line: usize,
+    font_id: &FontId,
+    line_height: f32,
+) {
     let active_fill = ui.visuals().selection.bg_fill.gamma_multiply(0.35);
     let active_text = ui.visuals().strong_text_color();
     let inactive_text = ui.visuals().weak_text_color().gamma_multiply(0.75);
     let rows = line_count.max(1);
 
     ui.allocate_ui_with_layout(
-        Vec2::new(GUTTER_WIDTH, rows as f32 * EDITOR_LINE_HEIGHT),
+        Vec2::new(GUTTER_WIDTH, rows as f32 * line_height),
         egui::Layout::top_down(egui::Align::RIGHT),
         |ui| {
             ui.set_width(GUTTER_WIDTH);
             for line in 0..rows {
                 let (rect, _) =
-                    ui.allocate_exact_size(Vec2::new(GUTTER_WIDTH, EDITOR_LINE_HEIGHT), Sense::hover());
+                    ui.allocate_exact_size(Vec2::new(GUTTER_WIDTH, line_height), Sense::hover());
 
                 if line == current_line {
                     ui.painter().rect_filled(rect, 0.0, active_fill);

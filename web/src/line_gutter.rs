@@ -1,6 +1,3 @@
-pub const LINE_HEIGHT_PX: f64 = 22.4; // 14px × 1.6
-pub const EDITOR_PAD_PX: f64 = 12.0; // 0.75rem
-
 pub fn line_count(content: &str) -> usize {
     if content.is_empty() {
         1
@@ -25,8 +22,14 @@ pub fn line_index_at_utf16(content: &str, utf16_offset: u32) -> usize {
     line
 }
 
-pub fn highlight_top_px(line: usize, scroll_top: f64) -> f64 {
-    EDITOR_PAD_PX + line as f64 * LINE_HEIGHT_PX - scroll_top
+pub fn highlight_top_px(
+    line: usize,
+    scroll_top: f64,
+    font_size: f64,
+    line_height: f64,
+) -> f64 {
+    let pad = font_size * 0.857;
+    pad + line as f64 * font_size * line_height - scroll_top
 }
 
 #[cfg(test)]

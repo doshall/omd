@@ -81,6 +81,24 @@ eframe::NativeOptions {
 | `split_ratio` | `f32` | `0.5` | 编辑区宽度比例（0.2–0.8） |
 | `status_message` | `String` | 空 | 状态栏临时消息 |
 | `status_timer` | `f32` | `0.0` | 消息显示倒计时（秒） |
+| `editor_settings` | `EditorSettings` | 见下表 | 编辑器行为与外观设置 |
+
+#### `EditorSettings`（桌面版持久化）
+
+| 字段 | 默认值 | 说明 |
+|------|--------|------|
+| `show_line_numbers` | `true` | 显示行号栏 |
+| `highlight_current_line` | `true` | 高亮当前行 |
+| `show_minimap` | `true` | 显示 Minimap |
+| `sync_scroll` | `true` | 分栏时同步滚动 |
+| `preview_syntax_highlight` | `true` | 预览区代码块语法高亮 |
+| `focus_mode` | `false` | 专注模式（隐藏工具栏与预览） |
+| `editor_font_size` | `14.0` | 编辑区字号（px） |
+| `editor_line_height` | `1.6` | 编辑区行高倍数 |
+| `preview_font_size` | `15.0` | 预览区字号（px） |
+| `show_undo_redo_hint` | `true` | Ctrl+Z / Ctrl+Y 状态栏提示 |
+
+打开方式：**View → Settings…**（`F11` 切换专注模式，`Esc` 退出）
 
 #### 持久化存储位置
 
@@ -160,6 +178,11 @@ Web 版使用以下 localStorage 键持久化状态：
 | `omd-web-content` | `string` | 示例文档 | Markdown 编辑内容 |
 | `omd-web-theme` | `string` | `"dark"` | 主题：`"dark"` 或 `"light"` |
 | `omd-web-view` | `string` | `"split"` | 视图：`"split"` / `"editor"` / `"preview"` |
+| `omd-web-settings` | `string` (JSON) | 默认见 `EditorSettings` | 编辑器设置（行号、Minimap、字号等） |
+
+#### `EditorSettings`（Web / Android，JSON）
+
+与桌面版字段相同，通过界面 **⚙ 设置** 修改并自动保存。
 
 #### 清除存储
 
