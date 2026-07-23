@@ -73,6 +73,8 @@ impl Default for OmdApp {
 
 impl OmdApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        egui_extras::install_image_loaders(&cc.egui_ctx);
+
         let app: Self = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
@@ -215,6 +217,9 @@ impl OmdApp {
             if Self::toolbar_button(ui, "🔗", "Link ([text](url))").clicked() {
                 self.insert_formatting("[]()");
             }
+            if Self::toolbar_button(ui, "🖼", "Image (![alt](path))").clicked() {
+                self.insert_image();
+            }
 
             ui.separator();
 
@@ -268,6 +273,26 @@ impl OmdApp {
         self.modified = true;
     }
 
+    fn insert_image(&mut self) {
+        let mut dialog = rfd::FileDialog::new().add_filter(
+            "Images",
+            &["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"],
+        );
+        if let Some(dir) = self.file_path.as_ref().and_then(|p| p.parent()) {
+            dialog = dialog.set_directory(dir);
+        }
+        if let Some(path) = dialog.pick_file() {
+            let path_str = path.display().to_string();
+            let alt = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("image");
+            self.content.push_str(&format!("\n![{alt}]({path_str})\n"));
+            self.modified = true;
+            self.set_status(format!("Inserted image: {}", path.display()));
+        }
+    }
+
     fn render_editor(&mut self, ui: &mut egui::Ui) {
         let font_id = egui::FontId::monospace(14.0);
         let text_color = ui.visuals().text_color();
@@ -292,12 +317,13 @@ impl OmdApp {
 
     fn render_preview(&self, ui: &mut egui::Ui) {
         let content = self.content.clone();
+        let base_path = self.file_path.as_ref().and_then(|p| p.parent());
         egui::ScrollArea::both()
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.set_max_width(ui.available_width());
                 ui.add_space(8.0);
-                markdown::render_preview(ui, &content);
+                markdown::render_preview(ui, &content, base_path);
             });
     }
 

@@ -9,7 +9,38 @@ pub fn markdown_to_html(markdown: &str) -> String {
     let parser = Parser::new_ext(markdown, options);
     let mut html_output = String::new();
     html::push_html(&mut html_output, parser);
-    html_output
+    transform_mermaid_blocks(&html_output)
+}
+
+/// Convert fenced mermaid code blocks to `<div class="mermaid">` for mermaid.js.
+fn transform_mermaid_blocks(html: &str) -> String {
+    let marker = "<pre><code class=\"language-mermaid\">";
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+
+    while let Some(start) = rest.find(marker) {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + marker.len()..];
+        if let Some(end) = after.find("</code></pre>") {
+            let code = html_escape(&after[..end]);
+            out.push_str("<div class=\"mermaid\">");
+            out.push_str(&code);
+            out.push_str("</div>");
+            rest = &after[end + "</code></pre>".len()..];
+        } else {
+            out.push_str(marker);
+            rest = after;
+            break;
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 pub fn word_count(text: &str) -> usize {
@@ -59,4 +90,13 @@ pub fn prefix_lines(text: &str, start: usize, end: usize, prefix: &str) -> Strin
         .join("\n");
 
     format!("{}{}{}", &text[..line_start], prefixed, &text[line_end..])
+}
+
+pub fn insert_at_cursor(text: &str, cursor: usize, insertion: &str) -> String {
+    let cursor = cursor.min(text.len());
+    format!("{}{}{}", &text[..cursor], insertion, &text[cursor..])
+}
+
+pub fn image_markdown(alt: &str, url: &str) -> String {
+    format!("\n![{alt}]({url})\n")
 }

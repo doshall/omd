@@ -1,5 +1,6 @@
 use egui::{Color32, FontFamily, FontId, RichText, Stroke, Ui};
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use std::path::{Path, PathBuf};
 
 struct PreviewState {
     heading_level: HeadingLevel,
@@ -19,6 +20,9 @@ struct PreviewState {
     current_row: Vec<String>,
     current_cell: String,
     inline_buffer: String,
+    image_url: Option<String>,
+    image_alt: String,
+    base_path: Option<PathBuf>,
 }
 
 impl Default for PreviewState {
@@ -41,11 +45,58 @@ impl Default for PreviewState {
             current_row: Vec::new(),
             current_cell: String::new(),
             inline_buffer: String::new(),
+            image_url: None,
+            image_alt: String::new(),
+            base_path: None,
         }
     }
 }
 
 impl PreviewState {
+    fn with_base_path(base_path: Option<&Path>) -> Self {
+        let mut state = Self::default();
+        state.base_path = base_path.map(Path::to_path_buf);
+        state
+    }
+
+    fn resolve_image_uri(&self, url: &str) -> String {
+        if url.starts_with("http://")
+            || url.starts_with("https://")
+            || url.starts_with("data:")
+            || url.starts_with("file://")
+        {
+            return url.to_string();
+        }
+
+        let path = Path::new(url);
+        let resolved = if path.is_absolute() {
+            path.to_path_buf()
+        } else if let Some(base) = &self.base_path {
+            base.join(path)
+        } else {
+            path.to_path_buf()
+        };
+
+        format!("file://{}", resolved.display())
+    }
+
+    fn render_image(&self, ui: &mut Ui, url: &str, alt: &str) {
+        let uri = self.resolve_image_uri(url);
+        let max_w = ui.available_width().min(480.0);
+
+        ui.vertical(|ui| {
+            ui.add(egui::Image::new(&uri).max_width(max_w));
+            if !alt.is_empty() {
+                ui.label(
+                    RichText::new(alt)
+                        .italics()
+                        .size(12.0)
+                        .color(ui.visuals().weak_text_color()),
+                );
+            }
+            ui.add_space(6.0);
+        });
+    }
     fn flush_inline(&mut self, ui: &mut Ui) {
         if self.inline_buffer.is_empty() {
             return;
@@ -219,6 +270,8 @@ impl PreviewState {
                     self.current_cell.push_str(&text);
                 } else if self.in_code_block {
                     self.code_buffer.push_str(&text);
+                } else if self.image_url.is_some() {
+                    self.image_alt.push_str(&text);
                 } else if self.task_checked.is_some() {
                     let checked = self.task_checked == Some(true);
                     let prefix = if checked { "☑ " } else { "☐ " };
@@ -248,21 +301,31 @@ impl PreviewState {
             }
             Event::FootnoteReference(_) | Event::Start(Tag::FootnoteDefinition(_)) => {}
             Event::End(TagEnd::FootnoteDefinition) => {}
-            Event::Start(Tag::Image { .. }) | Event::End(TagEnd::Image) => {}
+            Event::Start(Tag::Image { dest_url, .. }) => {
+                self.flush_inline(ui);
+                self.image_url = Some(dest_url.to_string());
+                self.image_alt.clear();
+            }
+            Event::End(TagEnd::Image) => {
+                if let Some(url) = self.image_url.take() {
+                    let alt = std::mem::take(&mut self.image_alt);
+                    self.render_image(ui, &url, &alt);
+                }
+            }
             _ => {}
         }
     }
 }
 
 /// Render Markdown source into an egui scroll area.
-pub fn render_preview(ui: &mut Ui, markdown: &str) {
+pub fn render_preview(ui: &mut Ui, markdown: &str, base_path: Option<&Path>) {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_TASKLISTS);
 
     let parser = Parser::new_ext(markdown, options);
-    let mut state = PreviewState::default();
+    let mut state = PreviewState::with_base_path(base_path);
 
     for event in parser {
         state.handle_event(ui, event);

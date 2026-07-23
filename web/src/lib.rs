@@ -18,26 +18,34 @@ const DEFAULT_CONTENT: &str = r#"# Welcome to omd Web
 
 ## 功能
 
-- 实时预览
+- 实时预览（图片、Mermaid 图表）
+- 插入图片：工具栏 🖼 / 粘贴 / 拖拽
 - 自动保存到浏览器
 - 导入 / 导出 `.md` 文件
-- 深色 / 浅色主题
 
-## 示例
+## 图表示例
 
-```rust
-fn main() {
-    println!("Hello, omd!");
-}
+```mermaid
+flowchart LR
+    A[编辑 Markdown] --> B[实时预览]
+    B --> C[导出文件]
 ```
 
-| 平台 | 支持 |
-|------|------|
-| 浏览器 | ✅ |
-| 手机 | ✅ |
+## 图片示例
 
-> 在手机上也能愉快地写 Markdown！
+![Rust Logo](https://www.rust-lang.org/static/images/rust-logo-blk.svg)
+
+> 支持 URL 图片、本地上传（Base64）和粘贴截图
 "#;
+
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = window, js_name = omdRenderMermaid)]
+    fn omd_render_mermaid();
+
+    #[wasm_bindgen(js_namespace = window, js_name = omdApplyTheme)]
+    fn omd_apply_theme(dark: bool);
+}
 
 #[derive(Clone, Copy, PartialEq)]
 enum ViewMode {
@@ -71,11 +79,7 @@ fn save_storage(key: &str, value: &str) {
 }
 
 fn apply_theme(dark: bool) {
-    if let Some(doc) = web_sys::window().and_then(|w| w.document()) {
-        if let Some(html) = doc.document_element() {
-            let _ = html.set_attribute("data-theme", if dark { "dark" } else { "light" });
-        }
-    }
+    omd_apply_theme(dark);
 }
 
 fn download_file(content: &str, filename: &str) {
@@ -125,6 +129,23 @@ fn textarea_selection(el: &HtmlTextAreaElement) -> (usize, usize) {
     (start, end)
 }
 
+fn insert_image_into(
+    current: &str,
+    set_content: WriteSignal<String>,
+    textarea_ref: &NodeRef<Textarea>,
+    alt: &str,
+    url: &str,
+) {
+    let md = markdown::image_markdown(alt, url);
+    let new_text = if let Some(el) = textarea_ref.get() {
+        let (start, _) = textarea_selection(&el);
+        markdown::insert_at_cursor(current, start, &md)
+    } else {
+        format!("{current}{md}")
+    };
+    set_content.set(new_text);
+}
+
 #[component]
 fn App() -> impl IntoView {
     let initial_content = load_storage(STORAGE_CONTENT).unwrap_or_else(|| DEFAULT_CONTENT.to_string());
@@ -144,6 +165,7 @@ fn App() -> impl IntoView {
     let (saved_hint, set_saved_hint) = signal(false);
     let textarea_ref = NodeRef::<Textarea>::new();
     let file_input_ref = NodeRef::<Input>::new();
+    let image_input_ref = NodeRef::<Input>::new();
 
     // Auto-save to localStorage
     Effect::new(move |_| {
@@ -167,6 +189,16 @@ fn App() -> impl IntoView {
         spawn_local(async move {
             gloo_timers::future::TimeoutFuture::new(1500).await;
             set_saved_hint.set(false);
+        });
+    });
+
+    // Render mermaid diagrams after preview updates
+    Effect::new(move |_| {
+        let _ = content.get();
+        let _ = dark_mode.get();
+        spawn_local(async move {
+            gloo_timers::future::TimeoutFuture::new(50).await;
+            omd_render_mermaid();
         });
     });
 
@@ -195,6 +227,126 @@ fn App() -> impl IntoView {
             let new_text = markdown::prefix_lines(&content.get(), start, end, prefix);
             set_content.set(new_text);
         }
+    };
+
+    let on_image_file = {
+        let set_content = set_content.clone();
+        let textarea_ref = textarea_ref.clone();
+        let content = content.clone();
+        move |ev: Event| {
+        let input: HtmlInputElement = ev.target().unwrap().unchecked_into();
+        if let Some(files) = input.files() {
+            if let Some(file) = files.get(0) {
+                let name = file.name();
+                let alt = std::path::Path::new(&name)
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("image")
+                    .to_string();
+                let reader = web_sys::FileReader::new().unwrap();
+                let reader_clone = reader.clone();
+                let set_content = set_content.clone();
+                let textarea_ref = textarea_ref.clone();
+                let current = content.get_untracked();
+                let onload = Closure::wrap(Box::new(move |_: web_sys::ProgressEvent| {
+                    if let Ok(result) = reader_clone.result() {
+                        if let Some(data_url) = result.as_string() {
+                            insert_image_into(&current, set_content, &textarea_ref, &alt, &data_url);
+                        }
+                    }
+                }) as Box<dyn FnMut(_)>);
+                reader.set_onload(Some(onload.as_ref().unchecked_ref()));
+                onload.forget();
+                let _ = reader.read_as_data_url(&file);
+            }
+        }
+        input.set_value("");
+        }
+    };
+
+    let on_paste = {
+        let set_content = set_content.clone();
+        let textarea_ref = textarea_ref.clone();
+        let content = content.clone();
+        move |ev: Event| {
+            let ev: web_sys::ClipboardEvent = ev.unchecked_into();
+            if let Some(dt) = ev.clipboard_data() {
+                let items = dt.items();
+                for i in 0..items.length() {
+                    if let Some(item) = items.get(i) {
+                        if item.type_().starts_with("image/") {
+                            ev.prevent_default();
+                            if let Ok(Some(file)) = item.get_as_file() {
+                                let reader = web_sys::FileReader::new().unwrap();
+                                let reader_clone = reader.clone();
+                                let set_content = set_content.clone();
+                                let textarea_ref = textarea_ref.clone();
+                                let current = content.get_untracked();
+                                let onload = Closure::wrap(Box::new(move |_: web_sys::ProgressEvent| {
+                                    if let Ok(result) = reader_clone.result() {
+                                        if let Some(data_url) = result.as_string() {
+                                            insert_image_into(
+                                                &current,
+                                                set_content,
+                                                &textarea_ref,
+                                                "image",
+                                                &data_url,
+                                            );
+                                        }
+                                    }
+                                }) as Box<dyn FnMut(_)>);
+                                reader.set_onload(Some(onload.as_ref().unchecked_ref()));
+                                onload.forget();
+                                let _ = reader.read_as_data_url(&file);
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    };
+
+    let on_drop = {
+        let set_content = set_content.clone();
+        let textarea_ref = textarea_ref.clone();
+        let content = content.clone();
+        move |ev: leptos::ev::DragEvent| {
+        ev.prevent_default();
+        if let Some(dt) = ev.data_transfer() {
+            if let Some(files) = dt.files() {
+                if let Some(file) = files.get(0) {
+                    if file.type_().starts_with("image/") {
+                        let alt = file
+                            .name()
+                            .split('.')
+                            .next()
+                            .unwrap_or("image")
+                            .to_string();
+                        let reader = web_sys::FileReader::new().unwrap();
+                        let reader_clone = reader.clone();
+                        let set_content = set_content.clone();
+                        let textarea_ref = textarea_ref.clone();
+                        let current = content.get_untracked();
+                        let onload = Closure::wrap(Box::new(move |_: web_sys::ProgressEvent| {
+                            if let Ok(result) = reader_clone.result() {
+                                if let Some(data_url) = result.as_string() {
+                                    insert_image_into(&current, set_content, &textarea_ref, &alt, &data_url);
+                                }
+                            }
+                        }) as Box<dyn FnMut(_)>);
+                        reader.set_onload(Some(onload.as_ref().unchecked_ref()));
+                        onload.forget();
+                        let _ = reader.read_as_data_url(&file);
+                    }
+                }
+            }
+        }
+        }
+    };
+
+    let on_drag_over = move |ev: leptos::ev::DragEvent| {
+        ev.prevent_default();
     };
 
     let on_file_change = move |ev: Event| {
@@ -253,6 +405,8 @@ fn App() -> impl IntoView {
 
             <input type="file" accept=".md,.markdown,.txt" class="file-input-hidden"
                 node_ref=file_input_ref on:change=on_file_change />
+            <input type="file" accept="image/*" class="file-input-hidden"
+                node_ref=image_input_ref on:change=on_image_file />
 
             <div class="toolbar">
                 <button class="btn btn-icon" on:click=move |_| insert_format("**") title="粗体">"B"</button>
@@ -260,6 +414,28 @@ fn App() -> impl IntoView {
                 <button class="btn btn-icon" on:click=move |_| insert_format("~~") title="删除线">"S"</button>
                 <button class="btn btn-icon" on:click=move |_| insert_format("`") title="行内代码">"</>"</button>
                 <button class="btn btn-icon" on:click=move |_| insert_format("[]()") title="链接">"🔗"</button>
+                <button class="btn btn-icon" title="插入图片"
+                    on:click=move |_| {
+                        if let Some(input) = image_input_ref.get() {
+                            input.click();
+                        }
+                    }
+                >"🖼"</button>
+                <button class="btn btn-icon" title="图片 URL"
+                    on:click={
+                        let set_content = set_content.clone();
+                        let textarea_ref = textarea_ref.clone();
+                        let content = content.clone();
+                        move |_| {
+                        if let Some(url) = web_sys::window()
+                            .and_then(|w| w.prompt_with_message("输入图片 URL:").ok().flatten())
+                            .filter(|s| !s.is_empty())
+                        {
+                            insert_image_into(&content.get(), set_content, &textarea_ref, "image", &url);
+                        }
+                        }
+                    }
+                >"🌐"</button>
                 <button class="btn btn-icon" on:click=move |_| insert_prefix("# ") title="标题">"H"</button>
                 <button class="btn btn-icon" on:click=move |_| insert_prefix("- ") title="列表">"•"</button>
                 <button class="btn btn-icon" on:click=move |_| insert_prefix("> ") title="引用">"❝"</button>
@@ -281,7 +457,10 @@ fn App() -> impl IntoView {
                             let el: HtmlTextAreaElement = ev.target().unwrap().unchecked_into();
                             set_content.set(el.value());
                         }
-                        placeholder="在此输入 Markdown..."
+                        on:paste=on_paste
+                        on:drop=on_drop
+                        on:dragover=on_drag_over
+                        placeholder="在此输入 Markdown，可粘贴或拖入图片..."
                         spellcheck="false"
                     ></textarea>
                 </div>

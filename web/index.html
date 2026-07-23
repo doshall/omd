@@ -7,6 +7,37 @@
     <title>omd — Markdown Editor</title>
     <link data-trunk rel="css" href="style.css" />
     <link data-trunk rel="rust" data-wasm-opt="z" href="Cargo.toml" />
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+    <script>
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default',
+            securityLevel: 'loose',
+        });
+
+        window.omdRenderMermaid = async function () {
+            if (typeof mermaid === 'undefined') return;
+            const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default';
+            mermaid.initialize({ startOnLoad: false, theme, securityLevel: 'loose' });
+            const nodes = document.querySelectorAll('.preview-content .mermaid:not([data-processed])');
+            if (nodes.length > 0) {
+                try {
+                    await mermaid.run({ nodes: Array.from(nodes) });
+                    nodes.forEach(n => n.setAttribute('data-processed', '1'));
+                } catch (e) {
+                    console.warn('mermaid render:', e);
+                }
+            }
+        };
+
+        window.omdApplyTheme = function (dark) {
+            document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+            document.querySelectorAll('.preview-content .mermaid[data-processed]').forEach(n => {
+                n.removeAttribute('data-processed');
+            });
+            window.omdRenderMermaid();
+        };
+    </script>
 </head>
 <body></body>
 </html>

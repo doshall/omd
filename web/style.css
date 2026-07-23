@@ -243,6 +243,34 @@ html, body {
 .preview-content img {
     max-width: 100%;
     height: auto;
+    border-radius: 6px;
+    margin: 0.5rem 0;
+    display: block;
+    box-shadow: 0 2px 8px var(--shadow);
+}
+
+.preview-content figure {
+    margin: 0.75rem 0;
+    text-align: center;
+}
+
+.preview-content figure img {
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.preview-content .mermaid {
+    margin: 0.75rem 0;
+    padding: 0.75rem;
+    background: var(--toolbar-bg);
+    border-radius: 8px;
+    overflow-x: auto;
+    text-align: center;
+}
+
+.preview-content svg {
+    max-width: 100%;
+    height: auto;
 }
 
 .divider {
