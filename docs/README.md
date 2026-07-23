@@ -44,7 +44,8 @@
 |------|------|
 | [用户指南](user-guide.md) | 功能概览、界面介绍、通用操作 |
 | [桌面版指南](desktop.md) | 安装、菜单、工具栏、快捷键、图片 |
-| [Web 版指南](web.md) | 浏览器运行、自动保存、Mermaid、移动端 |
+| [Web 版指南](web.md) | 浏览器运行、自动保存、Mermaid、移动端 | 浏览器用户 |
+| [Android 版指南](android.md) | APK 构建、安装、离线使用 | 手机用户 |
 | [Markdown 语法支持](markdown-syntax.md) | 支持的语法、GFM 扩展、Mermaid |
 | [版本功能对比](comparison.md) | 桌面版与 Web 版功能矩阵 |
 | [常见问题](faq.md) | FAQ 与故障排除 |
@@ -78,7 +79,7 @@ docs/
 ├── README.md              ← 你在这里（文档索引）
 ├── user-guide.md          用户入门
 ├── desktop.md             桌面版
-├── web.md                 Web 版
+├── android.md             Android APK
 ├── markdown-syntax.md     语法参考
 ├── comparison.md          版本对比
 ├── faq.md                 常见问题
