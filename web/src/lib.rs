@@ -149,6 +149,9 @@ extern "C" {
     #[wasm_bindgen(js_namespace = window, js_name = omdRenderMermaid)]
     fn omd_render_mermaid();
 
+    #[wasm_bindgen(js_namespace = window, js_name = omdHighlightCode)]
+    fn omd_highlight_code();
+
     #[wasm_bindgen(js_namespace = window, js_name = omdApplyTheme)]
     fn omd_apply_theme(dark: bool);
 }
@@ -322,6 +325,7 @@ fn App() -> impl IntoView {
         spawn_local(async move {
             gloo_timers::future::TimeoutFuture::new(50).await;
             omd_render_mermaid();
+            omd_highlight_code();
         });
     });
 

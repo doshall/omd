@@ -9,6 +9,7 @@ mod markdown;
 mod mermaid;
 mod minimap;
 mod sync_scroll;
+mod syntax_highlight;
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
