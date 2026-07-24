@@ -1,6 +1,7 @@
 mod editor_highlight;
 mod export;
 mod find_replace;
+mod tabs;
 mod vim_ex;
 mod keybindings;
 mod clipboard;
@@ -19,10 +20,8 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{Blob, BlobPropertyBag, HtmlInputElement, HtmlTextAreaElement, KeyboardEvent, MouseEvent};
 
-const STORAGE_CONTENT: &str = "omd-web-content";
 const STORAGE_THEME: &str = "omd-web-theme";
 const STORAGE_VIEW: &str = "omd-web-view";
-const STORAGE_FILENAME: &str = "omd-web-filename";
 
 use settings::EditorSettings;
 use keybindings::{KeybindingMode, KeybindingState, VimMode};
@@ -133,7 +132,17 @@ sequenceDiagram
 
 ---
 
-## 8. 视图与主题
+## 8. LaTeX 数学公式
+
+行内公式 $E = mc^2$，块级公式：
+
+$$
+\int_0^1 x^2 \, dx = \frac{1}{3}
+$$
+
+---
+
+## 9. 视图与主题
 
 | 按钮 | 模式 | 适用场景 |
 |------|------|----------|
@@ -145,7 +154,7 @@ sequenceDiagram
 
 ---
 
-## 9. 自动保存
+## 10. 自动保存
 
 编辑内容会自动保存到浏览器 **localStorage**，刷新页面后恢复。状态栏显示行数、字数、字符数及「已自动保存」提示。
 
@@ -164,6 +173,12 @@ extern "C" {
 
     #[wasm_bindgen(js_namespace = window, js_name = omdApplyTheme)]
     fn omd_apply_theme(dark: bool);
+
+    #[wasm_bindgen(js_namespace = window, js_name = omdRenderMath)]
+    fn omd_render_math();
+
+    #[wasm_bindgen(js_namespace = window, js_name = omdPrintHtml)]
+    fn omd_print_html(html: &str);
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -180,20 +195,6 @@ impl ViewMode {
             ViewMode::EditorOnly => "editor-only",
             ViewMode::PreviewOnly => "preview-only",
         }
-    }
-}
-
-fn load_storage(key: &str) -> Option<String> {
-    web_sys::window()
-        .and_then(|w| w.local_storage().ok().flatten())
-        .and_then(|s| s.get_item(key).ok().flatten())
-}
-
-fn save_storage(key: &str, value: &str) {
-    if let Some(storage) = web_sys::window()
-        .and_then(|w| w.local_storage().ok().flatten())
-    {
-        let _ = storage.set_item(key, value);
     }
 }
 
@@ -269,11 +270,29 @@ fn insert_image_into(
     set_content.set(new_text);
 }
 
+fn switch_tab_content(
+    store: &tabs::TabStore,
+    set_content: WriteSignal<String>,
+    set_filename: WriteSignal<String>,
+    set_saved_snapshot: WriteSignal<String>,
+) {
+    if let Some(tab) = store.active_tab() {
+        set_content.set(tab.content.clone());
+        set_filename.set(tab.filename.clone());
+        set_saved_snapshot.set(tab.saved_snapshot.clone());
+    }
+}
+
 #[component]
 fn App() -> impl IntoView {
-    let initial_content = load_storage(STORAGE_CONTENT).unwrap_or_else(|| DEFAULT_CONTENT.to_string());
-    let initial_dark = load_storage(STORAGE_THEME).map(|t| t == "dark").unwrap_or(true);
-    let initial_view = match load_storage(STORAGE_VIEW).as_deref() {
+    let initial_store =
+        tabs::load_tab_store(DEFAULT_CONTENT.to_string(), "document.md".to_string());
+    let initial_tab = initial_store
+        .active_tab()
+        .cloned()
+        .unwrap_or_else(|| tabs::TabStore::new_tab(String::new(), "document.md".to_string()));
+    let initial_dark = tabs::load_storage(STORAGE_THEME).map(|t| t == "dark").unwrap_or(true);
+    let initial_view = match tabs::load_storage(STORAGE_VIEW).as_deref() {
         Some("editor") => ViewMode::EditorOnly,
         Some("preview") => ViewMode::PreviewOnly,
         _ => ViewMode::Split,
@@ -284,18 +303,17 @@ fn App() -> impl IntoView {
 
     apply_theme(initial_dark);
 
-    let (content, set_content) = signal(initial_content);
+    let (tab_store, set_tab_store) = signal(initial_store);
+    let (content, set_content) = signal(initial_tab.content);
     let (dark_mode, set_dark_mode) = signal(initial_dark);
     let (view_mode, set_view_mode) = signal(initial_view);
     let (editor_settings, set_editor_settings) = signal(initial_settings);
     let (keybinding_state, set_keybinding_state) = signal(KeybindingState::default());
     let (settings_open, set_settings_open) = signal(false);
     let (undo_hint, set_undo_hint) = signal(String::new());
-    let (filename, set_filename) = signal(
-        load_storage(STORAGE_FILENAME).unwrap_or_else(|| "document.md".to_string()),
-    );
-    let initial_snapshot = content.get_untracked();
-    let (saved_snapshot, set_saved_snapshot) = signal(initial_snapshot.clone());
+    let (filename, set_filename) = signal(initial_tab.filename);
+    let initial_snapshot = initial_tab.saved_snapshot;
+    let (saved_snapshot, set_saved_snapshot) = signal(initial_snapshot);
     let (saved_hint, set_saved_hint) = signal(false);
     let (find_open, set_find_open) = signal(false);
     let (find_replace_mode, set_find_replace_mode) = signal(false);
@@ -317,15 +335,25 @@ fn App() -> impl IntoView {
     let image_input_ref = NodeRef::<Input>::new();
     let command_input_ref = NodeRef::<Input>::new();
 
-    // Auto-save to localStorage
+    // Auto-save to localStorage (tabs + preferences)
     Effect::new(move |_| {
         let text = content.get();
+        let name = filename.get();
         let dark = dark_mode.get();
         let view = view_mode.get();
+        let snapshot = saved_snapshot.get();
 
-        save_storage(STORAGE_CONTENT, &text);
-        save_storage(STORAGE_THEME, if dark { "dark" } else { "light" });
-        save_storage(
+        set_tab_store.update(|store| {
+            if let Some(tab) = store.active_tab_mut() {
+                tab.content = text.clone();
+                tab.filename = name.clone();
+                tab.saved_snapshot = snapshot;
+            }
+            tabs::persist_tab_store(store);
+        });
+
+        tabs::save_storage(STORAGE_THEME, if dark { "dark" } else { "light" });
+        tabs::save_storage(
             STORAGE_VIEW,
             match view {
                 ViewMode::Split => "split",
@@ -333,8 +361,6 @@ fn App() -> impl IntoView {
                 ViewMode::PreviewOnly => "preview",
             },
         );
-        let name = filename.get();
-        save_storage(STORAGE_FILENAME, &name);
 
         set_saved_hint.set(true);
         let set_saved_hint = set_saved_hint.clone();
@@ -362,14 +388,14 @@ fn App() -> impl IntoView {
         });
     });
 
-    // Render mermaid diagrams after preview updates
+    // Render mermaid/math after preview content updates (theme handled by omdApplyTheme).
     Effect::new(move |_| {
         let _ = content.get();
-        let _ = dark_mode.get();
         let syntax = editor_settings.get().preview_syntax_highlight;
         spawn_local(async move {
             gloo_timers::future::TimeoutFuture::new(50).await;
             omd_render_mermaid();
+            omd_render_math();
             if syntax {
                 omd_highlight_code();
             }
@@ -1046,6 +1072,13 @@ fn App() -> impl IntoView {
                             "text/html;charset=utf-8",
                         );
                     }>"导出 HTML"</button>
+                    <button class="btn" on:click=move |_| {
+                        let md = content.get();
+                        let name = filename.get();
+                        let title = export::export_title(&name, &md);
+                        let html = export::export_print_html_document(&md, &title);
+                        omd_print_html(&html);
+                    }>"导出 PDF"</button>
                     <button class="btn btn-icon" title="设置"
                         on:click=move |_| set_settings_open.set(true)>"⚙"</button>
                     <button class="btn btn-icon" title="切换主题"
@@ -1059,6 +1092,87 @@ fn App() -> impl IntoView {
                     </button>
                 </div>
             </header>
+
+            <div class="tab-bar">
+                {move || {
+                    let store = tab_store.get();
+                    let tab_count = store.tabs.len();
+                    let active_id = store.active_id.clone();
+                    store.tabs.iter().map(|tab| {
+                        let tab_id_class = tab.id.clone();
+                        let tab_id_select = tab.id.clone();
+                        let tab_id_close = tab.id.clone();
+                        let active_id_close = active_id.clone();
+                        let label = tabs::TabStore::tab_label(tab);
+                        let modified = unsaved::is_modified(&tab.content, &tab.saved_snapshot);
+                        let display = if modified { format!("{label} *") } else { label };
+                        let set_tab_store = set_tab_store.clone();
+                        let content = content.clone();
+                        let saved_snapshot = saved_snapshot.clone();
+                        let set_content = set_content.clone();
+                        let set_filename = set_filename.clone();
+                        let set_saved_snapshot = set_saved_snapshot.clone();
+                        view! {
+                            <div class=move || {
+                                let active = tab_store.get().active_id == tab_id_class;
+                                if active { "tab-item active" } else { "tab-item" }
+                            }>
+                                <button class="tab-select" on:click=move |_| {
+                                    if tab_store.get_untracked().active_id == tab_id_select { return; }
+                                    if unsaved::is_modified(&content.get(), &saved_snapshot.get())
+                                        && !unsaved::confirm_discard_changes()
+                                    {
+                                        return;
+                                    }
+                                    set_tab_store.update(|store| {
+                                        if store.switch_tab(&tab_id_select) {
+                                            switch_tab_content(store, set_content, set_filename, set_saved_snapshot);
+                                        }
+                                    });
+                                }>{display}</button>
+                                <button class="tab-close" title="关闭标签"
+                                    on:click=move |ev: MouseEvent| {
+                                        ev.stop_propagation();
+                                        if tab_count <= 1 { return; }
+                                        let closing_active = tab_id_close == active_id_close;
+                                        if closing_active
+                                            && unsaved::is_modified(&content.get(), &saved_snapshot.get())
+                                            && !unsaved::confirm_discard_changes()
+                                        {
+                                            return;
+                                        }
+                                        set_tab_store.update(|store| {
+                                            if store.close_tab(&tab_id_close) {
+                                                switch_tab_content(store, set_content, set_filename, set_saved_snapshot);
+                                            }
+                                        });
+                                    }
+                                >"×"</button>
+                            </div>
+                        }
+                    }).collect_view()
+                }}
+                <button class="tab-add" title="新建标签" on:click={
+                    let set_tab_store = set_tab_store.clone();
+                    let content = content.clone();
+                    let saved_snapshot = saved_snapshot.clone();
+                    let set_content = set_content.clone();
+                    let set_filename = set_filename.clone();
+                    let set_saved_snapshot = set_saved_snapshot.clone();
+                    move |_| {
+                        if unsaved::is_modified(&content.get(), &saved_snapshot.get())
+                            && !unsaved::confirm_discard_changes()
+                        {
+                            return;
+                        }
+                        set_tab_store.update(|store| {
+                            if store.add_tab(String::new(), "document.md".to_string()) {
+                                switch_tab_content(store, set_content, set_filename, set_saved_snapshot);
+                            }
+                        });
+                    }
+                }>"+"</button>
+            </div>
 
             <input type="file" accept=".md,.markdown,.txt" class="file-input-hidden"
                 node_ref=file_input_ref on:change=on_file_change />

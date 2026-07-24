@@ -140,6 +140,26 @@ impl<'a> PreviewState<'a> {
         }
     }
 
+    fn render_math(&mut self, ui: &mut Ui, tex: &str, display: bool) {
+        let frame = egui::Frame::none()
+            .fill(ui.visuals().faint_bg_color)
+            .inner_margin(if display { 10.0 } else { 4.0 })
+            .rounding(4.0);
+        frame.show(ui, |ui| {
+            ui.set_max_width(ui.available_width());
+            let font = FontId::new(if display { 15.0 } else { 13.0 }, FontFamily::Monospace);
+            ui.label(
+                RichText::new(tex)
+                    .font(font)
+                    .italics()
+                    .color(ui.visuals().text_color()),
+            );
+        });
+        if display {
+            ui.add_space(6.0);
+        }
+    }
+
     fn render_code_block(&mut self, ui: &mut Ui, code: String, lang: Option<String>) {
         if lang.as_deref() == Some("mermaid") {
             self.ctx
@@ -348,6 +368,14 @@ impl<'a> PreviewState<'a> {
                         .background_color(ui.visuals().code_bg_color),
                 );
             }
+            Event::InlineMath(text) => {
+                self.flush_inline(ui);
+                self.render_math(ui, &text, false);
+            }
+            Event::DisplayMath(text) => {
+                self.flush_inline(ui);
+                self.render_math(ui, &text, true);
+            }
             Event::Html(html) => {
                 ui.label(
                     RichText::new(html.to_string())
@@ -379,12 +407,7 @@ pub fn render_preview<'a>(ui: &mut Ui, markdown: &str, ctx: &'a mut PreviewConte
         egui::TextStyle::Body,
         egui::FontId::new(ctx.preview_font_size, egui::FontFamily::Proportional),
     );
-    let mut options = Options::empty();
-    options.insert(Options::ENABLE_STRIKETHROUGH);
-    options.insert(Options::ENABLE_TABLES);
-    options.insert(Options::ENABLE_TASKLISTS);
-
-    let parser = Parser::new_ext(markdown, options);
+    let parser = Parser::new_ext(markdown, markdown_options());
     let mut state = PreviewState::new(ctx);
 
     for event in parser {
@@ -493,14 +516,18 @@ pub fn is_image_path(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Convert Markdown to HTML for export (includes Mermaid block transform).
-pub fn markdown_to_html(markdown: &str) -> String {
+fn markdown_options() -> Options {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_TASKLISTS);
+    options.insert(Options::ENABLE_MATH);
+    options
+}
 
-    let parser = Parser::new_ext(markdown, options);
+/// Convert Markdown to HTML for export (includes Mermaid block transform).
+pub fn markdown_to_html(markdown: &str) -> String {
+    let parser = Parser::new_ext(markdown, markdown_options());
     let mut html_output = String::new();
     html::push_html(&mut html_output, parser);
     transform_mermaid_blocks(&html_output)

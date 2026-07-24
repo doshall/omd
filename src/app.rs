@@ -467,6 +467,33 @@ impl OmdApp {
         }
     }
 
+    fn export_pdf_via_browser(&mut self) {
+        let title = export::export_title(self.file_path.as_deref(), &self.content);
+        let html = export::export_print_html_document(&self.content, &title);
+        let temp_dir = std::env::temp_dir();
+        let file_name = format!(
+            "omd-print-{}.html",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis())
+                .unwrap_or(0)
+        );
+        let path = temp_dir.join(file_name);
+        match std::fs::write(&path, html) {
+            Ok(()) => {
+                if let Err(e) = open_path_in_browser(&path) {
+                    self.set_status(format!("Open print page failed: {e}"));
+                } else {
+                    self.set_status(format!(
+                        "Opened print preview in browser — use Print / Save as PDF ({})",
+                        path.display()
+                    ));
+                }
+            }
+            Err(e) => self.set_status(format!("Export failed: {e}")),
+        }
+    }
+
     fn toolbar_button(ui: &mut egui::Ui, label: &str, tooltip: &str) -> egui::Response {
         ui.add(egui::Button::new(label).min_size(egui::vec2(32.0, 24.0)))
             .on_hover_text(tooltip)
@@ -488,6 +515,9 @@ impl OmdApp {
             }
             if Self::toolbar_button(ui, "📤", "Export HTML").clicked() {
                 self.export_html_as();
+            }
+            if Self::toolbar_button(ui, "📕", "Export PDF (print)").clicked() {
+                self.export_pdf_via_browser();
             }
 
             ui.separator();
@@ -1152,6 +1182,10 @@ impl eframe::App for OmdApp {
                             self.export_html_as();
                             ui.close_menu();
                         }
+                        if ui.button("Export PDF…").clicked() {
+                            self.export_pdf_via_browser();
+                            ui.close_menu();
+                        }
                         ui.separator();
                         if ui.button("Exit").clicked() {
                             self.request_close(ctx);
@@ -1299,4 +1333,23 @@ impl eframe::App for OmdApp {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, eframe::APP_KEY, self);
     }
+}
+
+fn open_path_in_browser(path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open").arg(path).spawn()?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let path_str = path.to_string_lossy();
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", &path_str])
+            .spawn()?;
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        std::process::Command::new("xdg-open").arg(path).spawn()?;
+    }
+    Ok(())
 }

@@ -1,10 +1,16 @@
 use pulldown_cmark::{html, Options, Parser};
 
-pub fn markdown_to_html(markdown: &str) -> String {
+fn markdown_options() -> Options {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_TASKLISTS);
+    options.insert(Options::ENABLE_MATH);
+    options
+}
+
+pub fn markdown_to_html(markdown: &str) -> String {
+    let options = markdown_options();
 
     let parser = Parser::new_ext(markdown, options);
     let mut html_output = String::new();
@@ -123,5 +129,15 @@ mod tests {
         assert!(html.contains("<div class=\"mermaid\">"));
         assert!(html.contains("A --&gt; B") || html.contains("A --> B"));
         assert!(!html.contains("&amp;gt;"));
+    }
+
+    #[test]
+    fn markdown_gantt_keeps_chinese() {
+        let md = "```mermaid\ngantt\n    title MVP 8 周\n    dateFormat YYYY-MM-DD\n    section 基础\n    W1 基础与认证 :w1, 2025-01-06, 7d\n```";
+        let html = markdown_to_html(md);
+        assert!(html.contains("<div class=\"mermaid\">"));
+        assert!(html.contains("MVP 8 周"));
+        assert!(html.contains("section 基础"));
+        assert!(!html.contains("&amp;"));
     }
 }
