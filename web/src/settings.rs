@@ -36,6 +36,9 @@ pub struct EditorSettings {
     pub vim_use_system_clipboard: bool,
     pub show_toc: bool,
     pub enable_footnotes: bool,
+    pub compress_images: bool,
+    pub max_image_width: u32,
+    pub image_quality: u8,
 }
 
 impl Default for EditorSettings {
@@ -57,6 +60,9 @@ impl Default for EditorSettings {
             vim_use_system_clipboard: true,
             show_toc: true,
             enable_footnotes: true,
+            compress_images: true,
+            max_image_width: 1920,
+            image_quality: 85,
         }
     }
 }

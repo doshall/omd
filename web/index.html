@@ -147,6 +147,36 @@
             });
         };
 
+        window.omdCompressDataUrl = function (dataUrl, maxWidth, quality) {
+            return new Promise((resolve) => {
+                if (!dataUrl || !dataUrl.startsWith('data:image/') || dataUrl.includes('svg')) {
+                    resolve(dataUrl);
+                    return;
+                }
+                const img = new Image();
+                img.onload = function () {
+                    let w = img.naturalWidth;
+                    let h = img.naturalHeight;
+                    if (w > maxWidth) {
+                        h = Math.max(1, Math.round(h * maxWidth / w));
+                        w = maxWidth;
+                    }
+                    const canvas = document.createElement('canvas');
+                    canvas.width = w;
+                    canvas.height = h;
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) {
+                        resolve(dataUrl);
+                        return;
+                    }
+                    ctx.drawImage(img, 0, 0, w, h);
+                    resolve(canvas.toDataURL('image/jpeg', Math.min(1, Math.max(0.01, quality / 100))));
+                };
+                img.onerror = function () { resolve(dataUrl); };
+                img.src = dataUrl;
+            });
+        };
+
         window.omdPrintHtml = function (html) {
             const printWindow = window.open('', '_blank');
             if (!printWindow) {

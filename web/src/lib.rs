@@ -2,6 +2,7 @@ mod editor_highlight;
 mod export;
 mod find_replace;
 mod idb;
+mod image_compress;
 mod recent;
 mod tabs;
 mod vim_ex;
@@ -787,6 +788,7 @@ fn App() -> impl IntoView {
         let set_content = set_content.clone();
         let textarea_ref = textarea_ref.clone();
         let content = content.clone();
+        let editor_settings = editor_settings.clone();
         move |ev: Event| {
         let input: HtmlInputElement = ev.target().unwrap().unchecked_into();
         if let Some(files) = input.files() {
@@ -802,10 +804,18 @@ fn App() -> impl IntoView {
                 let set_content = set_content.clone();
                 let textarea_ref = textarea_ref.clone();
                 let current = content.get_untracked();
+                let settings = editor_settings.get_untracked();
                 let onload = Closure::wrap(Box::new(move |_: web_sys::ProgressEvent| {
                     if let Ok(result) = reader_clone.result() {
                         if let Some(data_url) = result.as_string() {
-                            insert_image_into(&current, set_content, &textarea_ref, &alt, &data_url);
+                            image_compress::insert_image_with_settings(
+                                &current,
+                                set_content,
+                                textarea_ref,
+                                &settings,
+                                &alt,
+                                &data_url,
+                            );
                         }
                     }
                 }) as Box<dyn FnMut(_)>);
@@ -822,6 +832,7 @@ fn App() -> impl IntoView {
         let set_content = set_content.clone();
         let textarea_ref = textarea_ref.clone();
         let content = content.clone();
+        let editor_settings = editor_settings.clone();
         move |ev: Event| {
             let ev: web_sys::ClipboardEvent = ev.unchecked_into();
             if let Some(dt) = ev.clipboard_data() {
@@ -836,13 +847,15 @@ fn App() -> impl IntoView {
                                 let set_content = set_content.clone();
                                 let textarea_ref = textarea_ref.clone();
                                 let current = content.get_untracked();
+                                let settings = editor_settings.get_untracked();
                                 let onload = Closure::wrap(Box::new(move |_: web_sys::ProgressEvent| {
                                     if let Ok(result) = reader_clone.result() {
                                         if let Some(data_url) = result.as_string() {
-                                            insert_image_into(
+                                            image_compress::insert_image_with_settings(
                                                 &current,
                                                 set_content,
-                                                &textarea_ref,
+                                                textarea_ref,
+                                                &settings,
                                                 "image",
                                                 &data_url,
                                             );
@@ -870,6 +883,7 @@ fn App() -> impl IntoView {
         let set_content = set_content.clone();
         let textarea_ref = textarea_ref.clone();
         let content = content.clone();
+        let editor_settings = editor_settings.clone();
         move |ev: leptos::ev::DragEvent| {
         ev.prevent_default();
         if let Some(dt) = ev.data_transfer() {
@@ -887,10 +901,18 @@ fn App() -> impl IntoView {
                         let set_content = set_content.clone();
                         let textarea_ref = textarea_ref.clone();
                         let current = content.get_untracked();
+                        let settings = editor_settings.get_untracked();
                         let onload = Closure::wrap(Box::new(move |_: web_sys::ProgressEvent| {
                             if let Ok(result) = reader_clone.result() {
                                 if let Some(data_url) = result.as_string() {
-                                    insert_image_into(&current, set_content, &textarea_ref, &alt, &data_url);
+                                    image_compress::insert_image_with_settings(
+                                        &current,
+                                        set_content,
+                                        textarea_ref,
+                                        &settings,
+                                        &alt,
+                                        &data_url,
+                                    );
                                 }
                             }
                         }) as Box<dyn FnMut(_)>);
@@ -906,6 +928,30 @@ fn App() -> impl IntoView {
 
     let on_drag_over = move |ev: leptos::ev::DragEvent| {
         ev.prevent_default();
+    };
+
+    let on_preview_task_change = {
+        let set_content = set_content.clone();
+        let content = content.clone();
+        move |ev: Event| {
+            let target = ev.target();
+            let Some(el) = target else { return };
+            let Ok(input) = el.dyn_into::<web_sys::HtmlInputElement>() else {
+                return;
+            };
+            if input.type_() != "checkbox" {
+                return;
+            }
+            let Some(attr) = input.get_attribute("data-omd-task") else {
+                return;
+            };
+            let Ok(idx) = attr.parse::<usize>() else {
+                return;
+            };
+            if let Some(updated) = omd_common::toggle_task_by_index(&content.get(), idx) {
+                set_content.set(updated);
+            }
+        }
     };
 
     let on_file_change = move |ev: Event| {
@@ -1539,6 +1585,44 @@ fn App() -> impl IntoView {
                                     }
                                 />
                             </label>
+                            <h3>"图片"</h3>
+                            <label class="settings-row">
+                                "粘贴/上传时压缩图片"
+                                <input type="checkbox" prop:checked=move || editor_settings.get().compress_images
+                                    on:change=move |ev| {
+                                        let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                        set_editor_settings.update(|s| s.compress_images = el.checked());
+                                    }
+                                />
+                            </label>
+                            <label class="settings-row">
+                                "最大宽度（px）"
+                                <input type="range" min="320" max="4096" step="1"
+                                    prop:value=move || editor_settings.get().max_image_width.to_string()
+                                    prop:disabled=move || !editor_settings.get().compress_images
+                                    on:input=move |ev| {
+                                        let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                        if let Ok(v) = el.value().parse::<u32>() {
+                                            set_editor_settings.update(|s| s.max_image_width = v);
+                                        }
+                                    }
+                                />
+                                <span>{move || editor_settings.get().max_image_width}</span>
+                            </label>
+                            <label class="settings-row">
+                                "JPEG 质量"
+                                <input type="range" min="40" max="100" step="1"
+                                    prop:value=move || editor_settings.get().image_quality.to_string()
+                                    prop:disabled=move || !editor_settings.get().compress_images
+                                    on:input=move |ev| {
+                                        let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                        if let Ok(v) = el.value().parse::<u8>() {
+                                            set_editor_settings.update(|s| s.image_quality = v);
+                                        }
+                                    }
+                                />
+                                <span>{move || editor_settings.get().image_quality}</span>
+                            </label>
                             <h3>"专注与提示"</h3>
                             <label class="settings-row">
                                 "专注模式"
@@ -1779,6 +1863,7 @@ fn App() -> impl IntoView {
                         class="preview-content"
                         node_ref=preview_ref
                         on:scroll=on_preview_scroll
+                        on:change=on_preview_task_change
                         inner_html=preview_html
                     ></div>
                 </div>

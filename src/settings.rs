@@ -28,6 +28,12 @@ pub struct EditorSettings {
     pub show_toc: bool,
     /// Parse and render Markdown footnotes.
     pub enable_footnotes: bool,
+    /// Compress pasted/uploaded images before embedding as data URLs.
+    pub compress_images: bool,
+    /// Max width in pixels when compressing images.
+    pub max_image_width: u32,
+    /// JPEG quality (1–100) when compressing images.
+    pub image_quality: u8,
 }
 
 impl Default for EditorSettings {
@@ -51,6 +57,9 @@ impl Default for EditorSettings {
             auto_save_interval_secs: 30,
             show_toc: true,
             enable_footnotes: true,
+            compress_images: true,
+            max_image_width: 1920,
+            image_quality: 85,
         }
     }
 }
@@ -99,6 +108,20 @@ pub fn render_settings_window(ctx: &Context, open: &mut bool, settings: &mut Edi
             );
             ui.checkbox(&mut settings.show_toc, "Show table of contents");
             ui.checkbox(&mut settings.enable_footnotes, "Enable footnotes");
+
+            ui.separator();
+            ui.heading("Images");
+            ui.checkbox(&mut settings.compress_images, "Compress pasted images");
+            ui.add_enabled(
+                settings.compress_images,
+                egui::Slider::new(&mut settings.max_image_width, 320..=4096)
+                    .logarithmic(true)
+                    .text("Max width (px)"),
+            );
+            ui.add_enabled(
+                settings.compress_images,
+                egui::Slider::new(&mut settings.image_quality, 40..=100).text("JPEG quality"),
+            );
 
             ui.separator();
             ui.heading("Files");

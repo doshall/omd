@@ -146,7 +146,7 @@ impl OmdApp {
         self.recent_files.push(path.clone());
     }
 
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext<'_>, cli_open: Option<PathBuf>) -> Self {
         egui_extras::install_image_loaders(&cc.egui_ctx);
 
         let mut app: Self = if let Some(storage) = cc.storage {
@@ -167,6 +167,15 @@ impl OmdApp {
         }
 
         app.apply_theme(&cc.egui_ctx);
+
+        if let Some(path) = cli_open {
+            if path.is_file() {
+                app.load_path(path);
+            } else {
+                app.set_status(format!("File not found: {}", path.display()));
+            }
+        }
+
         app
     }
 
@@ -349,24 +358,28 @@ impl OmdApp {
         self.set_status("New file created");
     }
 
+    fn load_path(&mut self, path: PathBuf) {
+        match std::fs::read_to_string(&path) {
+            Ok(content) => {
+                self.content = content;
+                self.file_path = Some(path.clone());
+                self.modified = false;
+                self.note_recent_file(&path);
+                self.sync_active_tab();
+                self.set_status(format!("Opened {}", path.display()));
+            }
+            Err(e) => {
+                self.set_status(format!("Failed to open: {e}"));
+            }
+        }
+    }
+
     fn open_file(&mut self) {
         if let Some(path) = rfd::FileDialog::new()
             .add_filter("Markdown", &["md", "markdown", "txt"])
             .pick_file()
         {
-            match std::fs::read_to_string(&path) {
-                Ok(content) => {
-                    self.content = content;
-                    self.file_path = Some(path.clone());
-                    self.modified = false;
-                    self.note_recent_file(&path);
-                    self.sync_active_tab();
-                    self.set_status(format!("Opened {}", path.display()));
-                }
-                Err(e) => {
-                    self.set_status(format!("Failed to open: {e}"));
-                }
-            }
+            self.load_path(path);
         }
     }
 
@@ -592,7 +605,16 @@ impl OmdApp {
     }
 
     fn try_paste_image(&mut self, ctx: &egui::Context) -> bool {
-        if let Some(data_url) = clipboard::clipboard_image_data_url() {
+        if let Some(mut data_url) = clipboard::clipboard_image_data_url() {
+            if self.editor_settings.compress_images {
+                if let Some(compressed) = crate::image_compress::compress_data_url(
+                    &data_url,
+                    self.editor_settings.max_image_width,
+                    self.editor_settings.image_quality,
+                ) {
+                    data_url = compressed;
+                }
+            }
             self.insert_image_markdown(ctx, "image", &data_url);
             self.set_status("Pasted image from clipboard");
             return true;
@@ -964,6 +986,7 @@ impl OmdApp {
     fn render_preview(&mut self, ui: &mut egui::Ui) -> ScrollMetrics {
         let content = self.content.clone();
         let base_path = self.file_path.as_ref().and_then(|p| p.parent());
+        let mut task_click = None;
         let mut ctx = PreviewContext {
             dark_mode: self.dark_mode,
             base_path,
@@ -973,6 +996,7 @@ impl OmdApp {
             image_lightbox: &mut self.image_lightbox,
             show_toc: self.editor_settings.show_toc,
             enable_footnotes: self.editor_settings.enable_footnotes,
+            task_click: &mut task_click,
         };
         let scroll = egui::ScrollArea::both()
             .id_salt("omd_preview_scroll")
@@ -982,6 +1006,13 @@ impl OmdApp {
                 ui.add_space(8.0);
                 markdown::render_preview(ui, &content, &mut ctx);
             });
+
+        if let Some(idx) = task_click {
+            if let Some(updated) = omd_common::toggle_task_by_index(&self.content, idx) {
+                self.content = updated;
+                self.mark_modified();
+            }
+        }
 
         ScrollMetrics {
             id: scroll.id,

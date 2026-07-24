@@ -207,9 +207,50 @@ fn transform_mermaid_blocks(html: &str) -> String {
     out
 }
 
+/// Replace pulldown-cmark disabled task checkboxes with interactive ones.
+pub fn make_task_lists_interactive(html: &str) -> String {
+    let mut result = String::with_capacity(html.len());
+    let mut rest = html;
+    let mut task_index = 0usize;
+
+    while let Some(pos) = rest.find("<input") {
+        result.push_str(&rest[..pos]);
+        let after = &rest[pos..];
+        if let Some(end) = after.find('>') {
+            let tag = &after[..=end];
+            rest = &after[end + 1..];
+            if tag.contains("type=\"checkbox\"") {
+                let checked = tag.contains("checked");
+                let checked_attr = if checked { " checked" } else { "" };
+                result.push_str(&format!(
+                    "<input type=\"checkbox\" data-omd-task=\"{task_index}\" class=\"omd-task\"{checked_attr}/>"
+                ));
+                task_index += 1;
+            } else {
+                result.push_str(tag);
+            }
+        } else {
+            result.push_str(rest);
+            return result;
+        }
+    }
+    result.push_str(rest);
+    result
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn interactive_task_lists() {
+        let md = "- [ ] todo\n- [x] done\n";
+        let html = markdown_to_html(md);
+        let interactive = make_task_lists_interactive(&html);
+        assert!(interactive.contains("data-omd-task=\"0\""));
+        assert!(interactive.contains("data-omd-task=\"1\""));
+        assert!(!interactive.contains("disabled"));
+    }
 
     #[test]
     fn footnotes_render() {

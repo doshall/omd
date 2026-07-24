@@ -2128,6 +2128,8 @@ dependencies = [
  "num-traits",
  "png 0.18.1",
  "tiff",
+ "zune-core 0.5.1",
+ "zune-jpeg 0.5.15",
 ]
 
 [[package]]
@@ -3067,7 +3069,7 @@ dependencies = [
 
 [[package]]
 name = "omd"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -3089,7 +3091,7 @@ dependencies = [
 
 [[package]]
 name = "omd-common"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "pulldown-cmark",
  "serde",
@@ -3097,7 +3099,7 @@ dependencies = [
 
 [[package]]
 name = "omd-web"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "console_error_panic_hook",
  "gloo-timers",

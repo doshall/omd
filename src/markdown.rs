@@ -14,6 +14,8 @@ pub struct PreviewContext<'a> {
     pub image_lightbox: &'a mut Option<String>,
     pub show_toc: bool,
     pub enable_footnotes: bool,
+    /// Set when the user clicks a task-list checkbox (0-based index).
+    pub task_click: &'a mut Option<usize>,
 }
 
 struct PreviewState<'a> {
@@ -42,6 +44,7 @@ struct PreviewState<'a> {
     footnote_name: String,
     footnote_buffer: String,
     base_path: Option<PathBuf>,
+    task_index: usize,
     ctx: &'a mut PreviewContext<'a>,
 }
 
@@ -73,6 +76,7 @@ impl<'a> PreviewState<'a> {
             footnote_name: String::new(),
             footnote_buffer: String::new(),
             base_path: ctx.base_path.map(Path::to_path_buf),
+            task_index: 0,
             ctx,
         }
     }
@@ -371,12 +375,20 @@ impl<'a> PreviewState<'a> {
                     self.image_alt.push_str(&text);
                 } else if self.task_checked.is_some() {
                     let checked = self.task_checked == Some(true);
-                    let prefix = if checked { "☑ " } else { "☐ " };
-                    let mut rich = RichText::new(format!("{prefix}{text}"));
-                    if checked {
-                        rich = rich.strikethrough();
-                    }
-                    ui.label(rich);
+                    let idx = self.task_index;
+                    self.task_index += 1;
+                    ui.horizontal(|ui| {
+                        let mut display_checked = checked;
+                        let response = ui.add(egui::Checkbox::without_text(&mut display_checked));
+                        if response.clicked() {
+                            *self.ctx.task_click = Some(idx);
+                        }
+                        let mut rich = RichText::new(text.to_string());
+                        if checked {
+                            rich = rich.strikethrough();
+                        }
+                        ui.label(rich);
+                    });
                     self.task_checked = None;
                 } else {
                     self.inline_buffer.push_str(&text);

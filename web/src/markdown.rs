@@ -1,5 +1,6 @@
 use omd_common::{
-    markdown_to_html_with_options, parse_front_matter, resolve_title, MarkdownRenderOptions,
+    make_task_lists_interactive, markdown_to_html_with_options, parse_front_matter, resolve_title,
+    MarkdownRenderOptions,
 };
 
 pub fn prepare_markdown(input: &str) -> (Option<omd_common::FrontMatter>, String) {
@@ -9,13 +10,14 @@ pub fn prepare_markdown(input: &str) -> (Option<omd_common::FrontMatter>, String
 
 pub fn markdown_to_html(markdown: &str, settings: &crate::settings::EditorSettings) -> String {
     let (_, body) = parse_front_matter(markdown);
-    markdown_to_html_with_options(
+    let html = markdown_to_html_with_options(
         body,
         MarkdownRenderOptions {
             include_toc: settings.show_toc,
             enable_footnotes: settings.enable_footnotes,
         },
-    )
+    );
+    make_task_lists_interactive(&html)
 }
 
 pub fn export_title(filename: &str, markdown: &str) -> String {

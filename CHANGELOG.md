@@ -4,9 +4,17 @@
 
 ## [未发布]
 
-### 修复
+## [0.7.0] - 2026-07-24
 
-- **Web 空白页**：本地开发不注册 Service Worker；HTML network-first；IndexedDB 恢复完成前不写空内容
+### 新增
+
+- **命令行打开文件**：桌面版支持 `omd path/to/file.md` 启动时直接打开文件
+- **图片压缩**：粘贴/上传图片时可自动缩放并转为 JPEG（设置项可调最大宽度与质量）；桌面与 Web 均支持
+- **预览任务列表可勾选**：预览区点击复选框即可切换 `- [ ]` / `- [x]`，同步回写 Markdown 源码
+
+### 变更
+
+- `omd-common` 新增 `toggle_task_by_index`、`make_task_lists_interactive`；版本号升至 **0.7.0**
 
 ## [0.6.0] - 2026-07-24
 
