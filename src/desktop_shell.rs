@@ -9,12 +9,14 @@ pub enum ShellCommand {
 
 #[cfg(feature = "desktop-shell")]
 mod imp {
-    use std::sync::mpsc::{self, Receiver, Sender};
+    use std::sync::mpsc::{self, Receiver};
+    #[cfg(target_os = "linux")]
+    use std::sync::mpsc::Sender;
 
     use global_hotkey::hotkey::{Code, HotKey, Modifiers};
     use global_hotkey::{GlobalHotKeyEvent, GlobalHotKeyManager};
     use tray_icon::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
-    use tray_icon::{Icon, TrayIconBuilder, TrayIconEvent};
+    use tray_icon::{Icon, TrayIcon, TrayIconBuilder, TrayIconEvent};
     #[cfg(target_os = "linux")]
     use gtk;
 
