@@ -22,7 +22,7 @@ if ! command -v trunk &>/dev/null; then
   cargo install trunk --locked
 fi
 rustup target add wasm32-unknown-unknown 2>/dev/null || true
-env -u NO_COLOR trunk build --release
+bash "$ROOT/scripts/trunk-build.sh"
 tar -czf "$OUT/omd-web-dist-v${VERSION}.tar.gz" -C dist .
 cd "$ROOT"
 

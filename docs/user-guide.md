@@ -10,7 +10,8 @@ omd 是一款用 Rust 编写的轻量级 Markdown 编辑器，提供**桌面版*
 | 安装 | 需编译或下载二进制 | 无需安装，打开即用 | 安装 APK |
 | 文件管理 | 原生文件对话框，直接读写磁盘 | 导入/下载 `.md` 文件 | 系统文件关联打开 `.md` |
 | 自动保存 | ✅ 可配置写入磁盘 | localStorage + IndexedDB | localStorage + IndexedDB |
-| 导出 HTML | ✅ | ✅ | — |
+| 导出 HTML / PDF | ✅ | ✅ | ✅ |
+| 自定义 CSS / 中英语界面 | ✅ | ✅ | ✅ |
 | 在线使用 | — | [omd Web](https://doshall.github.io/omd/) | — |
 | Mermaid 图表 | ✅ | ✅ | ✅ |
 | 图片粘贴 | ✅ `Ctrl+V` | ✅ 粘贴/拖拽 | ✅ 粘贴/上传 |
@@ -110,7 +111,19 @@ Web 版会**自动保存**编辑内容到浏览器（localStorage / IndexedDB）
 | 自动保存 | 内容自动保存到 localStorage，重启应用后恢复 |
 | 上传图片 | 使用系统文件选择器 |
 
-Android 版功能与 Web 版一致（Mermaid、图片粘贴、三种视图模式），详见 [Android 版指南](android.md)。
+Android 版功能与 Web 版一致（Mermaid、PlantUML、多标签、项目侧边栏、导出 HTML 等），详见 [Android 版指南](android.md)。
+
+## 图表与扩展语法（v0.9+）
+
+除 Mermaid 外，还支持：
+
+| 语言标记 | 说明 |
+|----------|------|
+| `mermaid` | 流程图、时序图等 |
+| `plantuml` | UML（Web/Android 经 plantuml.com；桌面远程 SVG） |
+| `graphviz` / `dot` | Graphviz 有向图（Web/Android 本地 viz.js） |
+
+在 **⚙ 设置** 中可配置**自定义预览 CSS**、**界面语言**与（Web）**拼写检查**。
 
 ## 图片
 

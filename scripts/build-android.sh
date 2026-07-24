@@ -17,7 +17,7 @@ if ! command -v trunk &>/dev/null; then
   cargo install trunk --locked
 fi
 rustup target add wasm32-unknown-unknown 2>/dev/null || true
-env -u NO_COLOR trunk build --release
+bash "$ROOT/scripts/trunk-build.sh"
 
 echo "==> [3/4] Copy dist/ to Android assets"
 rm -rf "$ASSETS"

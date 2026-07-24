@@ -208,12 +208,13 @@ strip = true        # 剥离调试符号
 
 ## 已知限制
 
-- 支持 Mermaid 图表渲染（`mermaid-rs-renderer` + resvg）
-- 支持从剪贴板粘贴图片（`Ctrl+V`，Base64 嵌入）
-- 代码块无语法高亮（预览区显示纯文本）
-- 工具栏格式按钮作用于全文（非精确选区）
-- 不支持 LaTeX 数学公式
-- 脚注语法不渲染
+- 代码块与 LaTeX 在预览区有完整支持；复杂公式以 KaTeX 为准
+- PlantUML 预览依赖 plantuml.com 网络
+- Graphviz 在桌面端显示为代码块（Web/Android 可渲染）
+- Linux 全局快捷键仅 X11 可靠；Wayland 可能被系统拦截
+- 工具栏格式按钮在部分情况下作用于选区，行为与 Web 版略有差异
+
+完整对比见 [三端功能对比](comparison.md)。
 
 ## 故障排除
 
