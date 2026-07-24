@@ -34,6 +34,10 @@ pub struct EditorSettings {
     pub max_image_width: u32,
     /// JPEG quality (1–100) when compressing images.
     pub image_quality: u8,
+    /// Keep running in the system tray when the window is closed.
+    pub minimize_to_tray_on_close: bool,
+    /// Register global shortcuts (Ctrl+Shift+O show, Ctrl+Shift+N new).
+    pub enable_global_shortcuts: bool,
 }
 
 impl Default for EditorSettings {
@@ -60,6 +64,8 @@ impl Default for EditorSettings {
             compress_images: true,
             max_image_width: 1920,
             image_quality: 85,
+            minimize_to_tray_on_close: true,
+            enable_global_shortcuts: true,
         }
     }
 }
@@ -134,6 +140,22 @@ pub fn render_settings_window(ctx: &Context, open: &mut bool, settings: &mut Edi
             );
             ui.label(
                 egui::RichText::new("Only applies to files with a saved path on disk.")
+                    .small()
+                    .weak(),
+            );
+
+            ui.separator();
+            ui.heading("Desktop");
+            ui.checkbox(
+                &mut settings.minimize_to_tray_on_close,
+                "Minimize to tray when closing window",
+            );
+            ui.checkbox(
+                &mut settings.enable_global_shortcuts,
+                "Global shortcuts (Ctrl+Shift+O show, Ctrl+Shift+N new)",
+            );
+            ui.label(
+                egui::RichText::new("Tray icon: right-click menu, double-click to show.")
                     .small()
                     .weak(),
             );

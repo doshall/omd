@@ -1,4 +1,5 @@
 use crate::clipboard;
+use crate::desktop_shell::{DesktopShell, ShellCommand};
 use crate::export;
 use crate::find_replace::{self, FindBarState};
 use crate::keybindings::{self, KeybindingMode, KeybindingState, VimMode};
@@ -72,6 +73,10 @@ pub struct OmdApp {
     auto_save_timer: f32,
     #[serde(skip)]
     image_lightbox: Option<String>,
+    #[serde(skip)]
+    desktop_shell: Option<DesktopShell>,
+    #[serde(skip)]
+    force_quit: bool,
 }
 
 impl Default for OmdApp {
@@ -102,6 +107,8 @@ impl Default for OmdApp {
             project_folder: ProjectFolder::default(),
             project_files: Vec::new(),
             show_project_sidebar: false,
+            desktop_shell: None,
+            force_quit: false,
         }
     }
 }
@@ -182,6 +189,11 @@ impl OmdApp {
         if app.project_folder.root.is_some() {
             app.show_project_sidebar = true;
         }
+        app.desktop_shell = DesktopShell::try_init(
+            app.editor_settings.enable_global_shortcuts
+                || app.editor_settings.minimize_to_tray_on_close,
+            app.editor_settings.enable_global_shortcuts,
+        );
 
         if let Some(path) = cli_open {
             if path.is_file() {
@@ -248,6 +260,27 @@ impl OmdApp {
             self.project_files = project::scan_markdown_files(&root);
             self.show_project_sidebar = true;
             self.set_status(format!("Opened folder {}", root.display()));
+        }
+    }
+
+    fn show_main_window(&self, ctx: &egui::Context) {
+        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+    }
+
+    fn handle_shell_commands(&mut self, ctx: &egui::Context) {
+        let Some(shell) = &self.desktop_shell else {
+            return;
+        };
+        for cmd in shell.poll_commands() {
+            match cmd {
+                ShellCommand::ShowWindow => self.show_main_window(ctx),
+                ShellCommand::NewFile => self.request_new_file(),
+                ShellCommand::Quit => {
+                    self.force_quit = true;
+                    self.request_close(ctx);
+                }
+            }
         }
     }
 
@@ -1114,12 +1147,24 @@ impl eframe::App for OmdApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(self.title()));
 
+        self.handle_shell_commands(ctx);
+
         let close_requested = ctx.input(|i| i.viewport().close_requested());
-        if close_requested && self.modified {
-            if self.unsaved_prompt.is_none() {
-                self.unsaved_prompt = Some(UnsavedPrompt::Close);
+        let minimize_to_tray = self.editor_settings.minimize_to_tray_on_close
+            && self.desktop_shell.is_some()
+            && !self.force_quit;
+
+        if close_requested {
+            if self.modified {
+                if self.unsaved_prompt.is_none() {
+                    self.unsaved_prompt = Some(UnsavedPrompt::Close);
+                }
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            } else if minimize_to_tray {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+                self.set_status("Running in system tray");
             }
-            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
         }
 
         self.handle_dropped_files(ctx);
