@@ -186,7 +186,9 @@ fn App() -> impl IntoView {
     let initial_snapshot = initial_tab.saved_snapshot;
     let (saved_snapshot, set_saved_snapshot) = signal(initial_snapshot);
     let (saved_hint, set_saved_hint) = signal(false);
-    let (storage_loading, set_storage_loading) = signal(tabs::needs_idb_hydration());
+    let needs_hydration = tabs::needs_idb_hydration();
+    let (storage_loading, set_storage_loading) = signal(needs_hydration);
+    let (storage_ready, set_storage_ready) = signal(!needs_hydration);
     let (find_open, set_find_open) = signal(false);
     let (find_replace_mode, set_find_replace_mode) = signal(false);
     let (find_query, set_find_query) = signal(String::new());
@@ -214,8 +216,9 @@ fn App() -> impl IntoView {
         let set_filename = set_filename.clone();
         let set_saved_snapshot = set_saved_snapshot.clone();
         let set_storage_loading = set_storage_loading.clone();
+        let set_storage_ready = set_storage_ready.clone();
         move |_| {
-            if !tabs::needs_idb_hydration() {
+            if !needs_hydration {
                 spawn_local(async move {
                     if let Some(store) = tabs::migrate_inline_tabs_to_idb_if_needed().await {
                         set_tab_store.set(store);
@@ -226,6 +229,15 @@ fn App() -> impl IntoView {
             set_storage_loading.set(true);
             spawn_local(async move {
                 let store = tabs::hydrate_tab_store_from_idb().await;
+                let store = if let Some(store) = store {
+                    Some(store)
+                } else {
+                    tabs::clear_idb_storage_meta();
+                    Some(tabs::load_inline_tab_store(
+                        DEFAULT_CONTENT.to_string(),
+                        "document.md".to_string(),
+                    ))
+                };
                 if let Some(store) = store {
                     if let Some(tab) = store.active_tab() {
                         set_content.set(tab.content.clone());
@@ -235,12 +247,16 @@ fn App() -> impl IntoView {
                     set_tab_store.set(store);
                 }
                 set_storage_loading.set(false);
+                set_storage_ready.set(true);
             });
         }
     });
 
     // Auto-save to localStorage (tabs + preferences)
     Effect::new(move |_| {
+        if !storage_ready.get() {
+            return;
+        }
         let text = content.get();
         let name = filename.get();
         let dark = dark_mode.get();
