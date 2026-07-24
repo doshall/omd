@@ -6,7 +6,8 @@
 
 ### 修复
 
-- **Release CI**：`release.yml` 支持 `workflow_dispatch` 补发历史 tag；Web 构建前自动下载 `mermaid.min.js`（含旧 tag 回退）
+- **Web Mermaid 渲染**：修复代码块二次 HTML 转义导致 `Syntax error in text`（`-->` 被错误编码为 `--&amp;gt;`）
+- 导出 HTML 中的 Mermaid 块同步修复（桌面 / Web）
 
 ## [0.3.0] - 2026-07-23
 
