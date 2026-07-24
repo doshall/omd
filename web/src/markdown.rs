@@ -132,10 +132,12 @@ mod tests {
     }
 
     #[test]
-    fn markdown_to_html_includes_math() {
-        let md = r"Formula $E=mc^2$";
+    fn markdown_gantt_keeps_chinese() {
+        let md = "```mermaid\ngantt\n    title MVP 8 周\n    dateFormat YYYY-MM-DD\n    section 基础\n    W1 基础与认证 :w1, 2025-01-06, 7d\n```";
         let html = markdown_to_html(md);
-        assert!(html.contains("math-inline"));
-        assert!(html.contains("E=mc^2"));
+        assert!(html.contains("<div class=\"mermaid\">"));
+        assert!(html.contains("MVP 8 周"));
+        assert!(html.contains("section 基础"));
+        assert!(!html.contains("&amp;"));
     }
 }

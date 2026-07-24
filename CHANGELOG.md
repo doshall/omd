@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 修复
+
+- **Web Mermaid 深色主题**：切换主题或重复渲染时从 `data-mermaid-source` 恢复源码，避免对已渲染 SVG 二次解析导致 `Syntax error in text`
+
 ## [0.4.0] - 2026-07-24
 
 ### 新增 — 文档与格式

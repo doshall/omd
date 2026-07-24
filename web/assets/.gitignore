@@ -1,2 +1,4 @@
 # Downloaded by scripts/build-android.sh for offline bundles
 mermaid.min.js
+katex.min.js
+katex.min.css

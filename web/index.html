@@ -70,18 +70,32 @@
             });
         };
 
+        let omdMermaidRenderGen = 0;
         window.omdRenderMermaid = async function () {
             if (typeof mermaid === 'undefined') return;
+            const gen = ++omdMermaidRenderGen;
             const theme = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default';
             mermaid.initialize({ startOnLoad: false, theme, securityLevel: 'loose' });
-            const nodes = document.querySelectorAll('.preview-content .mermaid:not([data-processed])');
-            if (nodes.length > 0) {
-                try {
-                    await mermaid.run({ nodes: Array.from(nodes) });
-                    nodes.forEach(n => n.setAttribute('data-processed', '1'));
-                } catch (e) {
-                    console.warn('mermaid render:', e);
+
+            const nodes = document.querySelectorAll('.preview-content .mermaid');
+            nodes.forEach((node) => {
+                const saved = node.getAttribute('data-mermaid-source');
+                if (!saved) {
+                    node.setAttribute('data-mermaid-source', node.textContent || '');
+                } else {
+                    // Theme switch / re-run: restore source text (DOM may hold SVG from last render).
+                    node.textContent = saved;
                 }
+                node.removeAttribute('data-processed');
+            });
+
+            if (nodes.length === 0) return;
+            try {
+                await mermaid.run({ nodes: Array.from(nodes) });
+                if (gen !== omdMermaidRenderGen) return;
+                nodes.forEach((n) => n.setAttribute('data-processed', '1'));
+            } catch (e) {
+                console.warn('mermaid render:', e);
             }
         };
 
@@ -104,9 +118,6 @@
 
         window.omdApplyTheme = function (dark) {
             document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-            document.querySelectorAll('.preview-content .mermaid[data-processed]').forEach(n => {
-                n.removeAttribute('data-processed');
-            });
             document.querySelectorAll('.preview-content .math[data-katex]').forEach(n => {
                 n.removeAttribute('data-katex');
                 n.textContent = n.getAttribute('data-tex') || n.textContent;
