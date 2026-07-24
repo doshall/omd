@@ -3,6 +3,7 @@
 
 mod app;
 mod clipboard;
+mod desktop_shell;
 mod editor_highlight;
 mod export;
 mod find_replace;
