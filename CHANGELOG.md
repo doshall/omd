@@ -4,6 +4,10 @@
 
 ## [未发布]
 
+### 修复
+
+- **Web 空白页**：本地开发不注册 Service Worker；HTML network-first；IndexedDB 恢复完成前不写空内容
+
 ## [0.6.0] - 2026-07-24
 
 ### 新增

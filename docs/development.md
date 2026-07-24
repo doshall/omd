@@ -111,6 +111,8 @@ env -u NO_COLOR trunk build --release
 
 > **注意**：若 `trunk` 报 `invalid value '1' for '--no-color'`，使用 `env -u NO_COLOR` 前缀。
 
+本地 `trunk serve`（`localhost` / `127.0.0.1`）**不会注册 Service Worker**。若页面空白，请 `Ctrl+Shift+R` 强制刷新，或在开发者工具中注销该站点的 Service Worker。详见 [Web 版指南 — 开发构建](web.md#开发构建)。
+
 ### 同时开发两个版本
 
 两个版本是独立的 Cargo 项目，可分别在不同终端中运行：

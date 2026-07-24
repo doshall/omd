@@ -211,29 +211,57 @@ public_url = "/omd/"
 
 安装方式：在支持的浏览器中打开 Web 版，选择「安装应用」或「添加到主屏幕」。
 
-### localStorage 键
+### localStorage 与 IndexedDB
 
-Web 版使用以下 localStorage 键持久化状态：
+Web 版使用 **localStorage** 保存设置、主题、视图与标签元数据；**IndexedDB**（数据库名 `omd-web`，对象库 `documents`）保存大文档正文与最近文件内容。
+
+#### localStorage 键
 
 | 键名 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `omd-web-content` | `string` | 示例文档 | Markdown 编辑内容 |
+| `omd-web-tabs` | `string` (JSON) | — | 小文档：完整 `TabStore`（含各标签正文） |
+| `omd-web-tabs-meta` | `string` (JSON) | — | 大文档：仅标签 id 与文件名 |
+| `omd-web-recent` | `string` (JSON) | `[]` | 最近文件列表（id + 文件名） |
+| `omd-web-settings` | `string` (JSON) | 默认见 `EditorSettings` | 编辑器设置（行号、Minimap、TOC/脚注等） |
 | `omd-web-theme` | `string` | `"dark"` | 主题：`"dark"` 或 `"light"` |
 | `omd-web-view` | `string` | `"split"` | 视图：`"split"` / `"editor"` / `"preview"` |
-| `omd-web-settings` | `string` (JSON) | 默认见 `EditorSettings` | 编辑器设置（行号、Minimap、字号等） |
+| `omd-web-storage-version` | `string` | — | 为 `"idb"` 时表示正文在 IndexedDB |
+| `omd-web-content` | `string` | — | **旧版**单文档正文（迁移用） |
+| `omd-web-filename` | `string` | — | **旧版**单文档文件名（迁移用） |
+
+#### IndexedDB 键（`documents` 对象库）
+
+| 键前缀 | 内容 |
+|--------|------|
+| `tab:{tab-id}` | JSON：`{ content, saved_snapshot }` |
+| `recent:{recent-id}` | 最近文件的 Markdown 正文 |
 
 #### `EditorSettings`（Web / Android，JSON）
 
-与桌面版字段相同，通过界面 **⚙ 设置** 修改并自动保存。
+与桌面版字段基本相同（Web 无自动保存到磁盘项），通过界面 **⚙ 设置** 修改并自动保存。v0.6.0 起新增：
+
+| 字段 | 默认 | 说明 |
+|------|------|------|
+| `show_toc` | `true` | 预览与导出是否生成目录 |
+| `enable_footnotes` | `true` | 是否解析脚注 |
 
 #### 清除存储
 
 ```javascript
 // 浏览器控制台执行
-localStorage.removeItem('omd-web-content');
+localStorage.removeItem('omd-web-tabs');
+localStorage.removeItem('omd-web-tabs-meta');
+localStorage.removeItem('omd-web-recent');
+localStorage.removeItem('omd-web-settings');
 localStorage.removeItem('omd-web-theme');
 localStorage.removeItem('omd-web-view');
+localStorage.removeItem('omd-web-storage-version');
+// Application → IndexedDB → 删除 omd-web
 ```
+
+#### 本地开发与 Service Worker
+
+`trunk serve` 在 `localhost` / `127.0.0.1` 上**不注册** Service Worker。若曾访问过线上/Pages 版本导致页面空白，请强制刷新或注销 SW。生产构建（GitHub Pages）使用 `sw.js`（`omd-web-v6`），HTML 为 network-first。
 
 ### 外部 CDN 依赖
 

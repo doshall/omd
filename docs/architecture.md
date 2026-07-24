@@ -269,13 +269,18 @@ omd-web
 
 ### Web 版
 
-通过浏览器 localStorage：
+通过 **localStorage**（设置、元数据）与 **IndexedDB**（大文档正文、最近文件）：
 
-| 键 | 值 | 触发 |
-|----|-----|------|
-| `omd-web-content` | Markdown 文本 | 每次编辑 |
+| 键 / 位置 | 值 | 触发 |
+|-----------|-----|------|
+| `omd-web-tabs` 或 `omd-web-tabs-meta` | 标签 store | 每次编辑（恢复完成后） |
+| IndexedDB `tab:{id}` | 标签正文 | 大文档模式 |
+| `omd-web-recent` + IndexedDB `recent:{id}` | 最近文件 | 打开/下载时 |
+| `omd-web-settings` | `EditorSettings` JSON | 设置变更 |
 | `omd-web-theme` | `dark` / `light` | 主题切换 |
 | `omd-web-view` | `split` / `editor` / `preview` | 视图切换 |
+
+旧键 `omd-web-content` / `omd-web-filename` 仅用于从单文档迁移。
 
 ## 主题系统
 

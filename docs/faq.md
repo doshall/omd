@@ -89,16 +89,20 @@ eframe persistence 会保存编辑区内容。但建议养成 `Ctrl+S` 保存习
 ### 页面空白或 WASM 加载失败？
 
 1. 确认浏览器支持 WebAssembly（Chrome 57+、Firefox 52+、Safari 11+）
-2. 检查控制台错误信息
-3. 重新构建：`cd web && trunk build --release`
-4. 确认服务器正确设置 WASM MIME 类型
+2. **强制刷新**：`Ctrl+Shift+R`（Mac：`Cmd+Shift+R`）
+3. 若曾安装 PWA 或访问过 GitHub Pages：开发者工具 → **Application** → **Service Workers** → **Unregister**，然后刷新
+4. 本地 `trunk serve` 在 localhost 不注册 SW；若仍空白，清除该站点的 Local Storage 与 IndexedDB
+5. 检查控制台错误信息
+6. 重新构建：`bash scripts/fetch-web-assets.sh && cd web && trunk build --release`
+7. 确认服务器正确设置 WASM MIME 类型
 
 ### 刷新后内容还在吗？
 
-是的，Web 版自动保存到 localStorage。除非：
+是的，Web 版自动保存到 localStorage / IndexedDB。除非：
+
 - 使用了浏览器隐私/无痕模式
 - 手动清除了浏览器数据
-- localStorage 已满
+- 存储配额已满（大文档会自动尝试 IndexedDB）
 
 ### 如何清除自动保存的内容？
 
@@ -207,13 +211,12 @@ rustup target add wasm32-unknown-unknown
 - **桌面版**：使用 egui 内置深色/浅色方案，暂不支持自定义
 - **Web 版**：修改 `web/style.css` 中的 CSS 变量，参见 [配置参考](configuration.md)
 
-### localStorage 存了哪些数据？
+### localStorage / IndexedDB 存了哪些数据？
 
-| 键名 | 内容 |
-|------|------|
-| `omd-web-content` | Markdown 文本 |
-| `omd-web-theme` | 主题偏好 |
-| `omd-web-view` | 视图模式 |
+详见 [配置参考 — localStorage 与 IndexedDB](configuration.md#localstorage-与-indexeddb)。摘要：
+
+- **localStorage**：设置、主题、视图、标签元数据、最近文件列表
+- **IndexedDB**（`omd-web`）：大文档各标签正文、最近文件正文
 
 ### 如何离线使用 Web 版？
 
