@@ -6,13 +6,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WEB="$ROOT/web"
 ANDROID="$ROOT/android"
 ASSETS="$ANDROID/app/src/main/assets"
-MERMAID_URL="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"
 
-echo "==> [1/4] Download offline Mermaid.js (if missing)"
-mkdir -p "$WEB/assets"
-if [[ ! -f "$WEB/assets/mermaid.min.js" ]]; then
-  curl -fsSL -o "$WEB/assets/mermaid.min.js" "$MERMAID_URL"
-fi
+echo "==> [1/4] Fetch offline Web assets (mermaid, katex, pako, viz, …)"
+bash "$ROOT/scripts/fetch-web-assets.sh"
 
 echo "==> [2/4] Build Web WASM bundle (Trunk release)"
 cd "$WEB"
