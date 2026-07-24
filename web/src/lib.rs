@@ -9,6 +9,7 @@ mod markdown;
 mod minimap;
 mod settings;
 mod sync_scroll;
+mod unsaved;
 
 use leptos::ev::Event;
 use leptos::html::{Canvas, Div, Input, Textarea};
@@ -293,6 +294,8 @@ fn App() -> impl IntoView {
     let (filename, set_filename) = signal(
         load_storage(STORAGE_FILENAME).unwrap_or_else(|| "document.md".to_string()),
     );
+    let initial_snapshot = content.get_untracked();
+    let (saved_snapshot, set_saved_snapshot) = signal(initial_snapshot.clone());
     let (saved_hint, set_saved_hint) = signal(false);
     let (find_open, set_find_open) = signal(false);
     let (find_replace_mode, set_find_replace_mode) = signal(false);
@@ -376,6 +379,15 @@ fn App() -> impl IntoView {
     Effect::new({
         move |_| {
             crate::clipboard::refresh_cache();
+        }
+    });
+
+    Effect::new({
+        let content = content.clone();
+        let saved_snapshot = saved_snapshot.clone();
+        move |_| {
+            let modified = unsaved::is_modified(&content.get(), &saved_snapshot.get());
+            unsaved::set_unsaved_warning(modified);
         }
     });
 
@@ -529,6 +541,7 @@ fn App() -> impl IntoView {
         let textarea_ref = textarea_ref.clone();
         let find_open = find_open.clone();
         let filename = filename.clone();
+        let set_saved_snapshot = set_saved_snapshot.clone();
         move |ev: KeyboardEvent| {
             if ev.key() == "F11" {
                 ev.prevent_default();
@@ -614,12 +627,12 @@ fn App() -> impl IntoView {
                     set_editor_settings.update(|s| s.show_line_numbers = show);
                 }
                 if result.request_save {
-                    download_file(&text, &filename.get_untracked());
+                    let name = filename.get_untracked();
+                    download_file(&text, &name);
+                    set_saved_snapshot.set(text.clone());
                 }
             }
             set_keybinding_state.set(kb);
-
-            set_editor_char_cursor.set(action.cursor);
             let ta_ref = textarea_ref.clone();
             let cursor = action.cursor;
             let selection = action.selection;
@@ -952,12 +965,14 @@ fn App() -> impl IntoView {
             if let Some(file) = files.get(0) {
                 let set_content = set_content.clone();
                 let set_filename = set_filename.clone();
+                let set_saved_snapshot = set_saved_snapshot.clone();
                 let name = file.name();
                 let reader = web_sys::FileReader::new().unwrap();
                 let reader_clone = reader.clone();
                 let onload = Closure::wrap(Box::new(move |_: web_sys::ProgressEvent| {
                     if let Ok(result) = reader_clone.result() {
                         if let Some(text) = result.as_string() {
+                            set_saved_snapshot.set(text.clone());
                             set_content.set(text);
                         }
                     }
@@ -976,17 +991,48 @@ fn App() -> impl IntoView {
             <header class="header">
                 <h1><span>"omd"</span>" Web"</h1>
                 <div class="header-actions">
-                    <button class="btn" on:click=move |_| {
-                        set_content.set(String::new());
-                        set_filename.set("document.md".to_string());
+                    <button class="btn" on:click={
+                        let content = content.clone();
+                        let saved_snapshot = saved_snapshot.clone();
+                        let set_content = set_content.clone();
+                        let set_filename = set_filename.clone();
+                        let set_saved_snapshot = set_saved_snapshot.clone();
+                        move |_| {
+                            if unsaved::is_modified(&content.get(), &saved_snapshot.get())
+                                && !unsaved::confirm_discard_changes()
+                            {
+                                return;
+                            }
+                            set_content.set(String::new());
+                            set_filename.set("document.md".to_string());
+                            set_saved_snapshot.set(String::new());
+                        }
                     }>"新建"</button>
-                    <button class="btn" on:click=move |_| {
-                        if let Some(input) = file_input_ref.get() {
-                            input.click();
+                    <button class="btn" on:click={
+                        let content = content.clone();
+                        let saved_snapshot = saved_snapshot.clone();
+                        let file_input_ref = file_input_ref.clone();
+                        move |_| {
+                            if unsaved::is_modified(&content.get(), &saved_snapshot.get())
+                                && !unsaved::confirm_discard_changes()
+                            {
+                                return;
+                            }
+                            if let Some(input) = file_input_ref.get() {
+                                input.click();
+                            }
                         }
                     }>"打开"</button>
-                    <button class="btn btn-primary" on:click=move |_| {
-                        download_file(&content.get(), &filename.get());
+                    <button class="btn btn-primary" on:click={
+                        let content = content.clone();
+                        let filename = filename.clone();
+                        let set_saved_snapshot = set_saved_snapshot.clone();
+                        move |_| {
+                            let text = content.get();
+                            let name = filename.get();
+                            download_file(&text, &name);
+                            set_saved_snapshot.set(text);
+                        }
                     }>"下载"</button>
                     <button class="btn" on:click=move |_| {
                         let md = content.get();
@@ -1065,6 +1111,7 @@ fn App() -> impl IntoView {
                 let set_undo_hint = set_undo_hint.clone();
                 let content = content.clone();
                 let filename = filename.clone();
+                let set_saved_snapshot = set_saved_snapshot.clone();
                 let command_input_ref = command_input_ref.clone();
                 let textarea_ref = textarea_ref.clone();
                 view! {
@@ -1108,7 +1155,9 @@ fn App() -> impl IntoView {
                                                         .update(|s| s.show_line_numbers = show);
                                                 }
                                                 if result.request_save {
-                                                    download_file(&text, &filename.get_untracked());
+                                                    let name = filename.get_untracked();
+                                                    download_file(&text, &name);
+                                                    set_saved_snapshot.set(text.clone());
                                                 }
                                             }
                                             set_keybinding_state.set(kb);
@@ -1619,10 +1668,17 @@ fn App() -> impl IntoView {
                 <span>
                     {move || {
                         let hint = undo_hint.get();
-                        if hint.is_empty() {
-                            filename.get()
+                        let name = filename.get();
+                        let modified = unsaved::is_modified(&content.get(), &saved_snapshot.get());
+                        let display = if modified {
+                            format!("{name} *")
                         } else {
-                            format!("{} · {}", filename.get(), hint)
+                            name
+                        };
+                        if hint.is_empty() {
+                            display
+                        } else {
+                            format!("{display} · {hint}")
                         }
                     }}
                     <span class=move || format!("saved-hint {}", if saved_hint.get() { "show" } else { "" })>
