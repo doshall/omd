@@ -119,6 +119,34 @@
             omdRenderMathNodes(root);
         };
 
+        window.omdInitImageLightbox = function () {
+            const root = document.querySelector('.preview-content');
+            if (!root) return;
+            if (root.dataset.omdLightbox === '1') return;
+            root.dataset.omdLightbox = '1';
+            let overlay = document.getElementById('omd-image-lightbox');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'omd-image-lightbox';
+                overlay.className = 'image-lightbox';
+                overlay.innerHTML = '<img alt="" /><button type="button" aria-label="关闭">×</button>';
+                document.body.appendChild(overlay);
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay || e.target.tagName === 'BUTTON') {
+                        overlay.classList.remove('open');
+                    }
+                });
+            }
+            const img = overlay.querySelector('img');
+            root.addEventListener('click', (e) => {
+                if (e.target.tagName === 'IMG') {
+                    img.src = e.target.src;
+                    img.alt = e.target.alt || '';
+                    overlay.classList.add('open');
+                }
+            });
+        };
+
         window.omdPrintHtml = function (html) {
             const printWindow = window.open('', '_blank');
             if (!printWindow) {

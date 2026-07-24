@@ -1,7 +1,8 @@
 use crate::mermaid::MermaidCache;
 use crate::syntax_highlight;
-use egui::{Color32, FontFamily, FontId, RichText, Stroke, Ui};
-use pulldown_cmark::{html, CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use egui::{Color32, FontFamily, FontId, RichText, Sense, Stroke, Ui};
+use omd_common::{collect_headings, markdown_to_html as common_html, parse_front_matter};
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use std::path::{Path, PathBuf};
 
 pub struct PreviewContext<'a> {
@@ -10,6 +11,7 @@ pub struct PreviewContext<'a> {
     pub mermaid_cache: &'a mut MermaidCache,
     pub preview_syntax_highlight: bool,
     pub preview_font_size: f32,
+    pub image_lightbox: &'a mut Option<String>,
 }
 
 struct PreviewState<'a> {
@@ -33,6 +35,10 @@ struct PreviewState<'a> {
     inline_buffer: String,
     image_url: Option<String>,
     image_alt: String,
+    footnote_defs: Vec<(String, String)>,
+    in_footnote_def: bool,
+    footnote_name: String,
+    footnote_buffer: String,
     base_path: Option<PathBuf>,
     ctx: &'a mut PreviewContext<'a>,
 }
@@ -60,6 +66,10 @@ impl<'a> PreviewState<'a> {
             inline_buffer: String::new(),
             image_url: None,
             image_alt: String::new(),
+            footnote_defs: Vec::new(),
+            in_footnote_def: false,
+            footnote_name: String::new(),
+            footnote_buffer: String::new(),
             base_path: ctx.base_path.map(Path::to_path_buf),
             ctx,
         }
@@ -86,12 +96,19 @@ impl<'a> PreviewState<'a> {
         format!("file://{}", resolved.display())
     }
 
-    fn render_image(&self, ui: &mut Ui, url: &str, alt: &str) {
+    fn render_image(&mut self, ui: &mut Ui, url: &str, alt: &str) {
         let uri = self.resolve_image_uri(url);
         let max_w = ui.available_width().min(480.0);
 
         ui.vertical(|ui| {
-            ui.add(egui::Image::new(&uri).max_width(max_w));
+            let response = ui.add(
+                egui::Image::new(&uri)
+                    .max_width(max_w)
+                    .sense(Sense::click()),
+            );
+            if response.clicked() {
+                *self.ctx.image_lightbox = Some(uri.clone());
+            }
             if !alt.is_empty() {
                 ui.label(
                     RichText::new(alt)
@@ -342,7 +359,9 @@ impl<'a> PreviewState<'a> {
                 self.flush_inline(ui);
             }
             Event::Text(text) => {
-                if self.in_table {
+                if self.in_footnote_def {
+                    self.footnote_buffer.push_str(&text);
+                } else if self.in_table {
                     self.current_cell.push_str(&text);
                 } else if self.in_code_block {
                     self.code_buffer.push_str(&text);
@@ -383,8 +402,24 @@ impl<'a> PreviewState<'a> {
                         .color(Color32::GRAY),
                 );
             }
-            Event::FootnoteReference(_) | Event::Start(Tag::FootnoteDefinition(_)) => {}
-            Event::End(TagEnd::FootnoteDefinition) => {}
+            Event::FootnoteReference(name) => {
+                self.flush_inline(ui);
+                ui.label(
+                    RichText::new(format!("[^{name}]"))
+                        .small()
+                        .color(ui.visuals().hyperlink_color),
+                );
+            }
+            Event::Start(Tag::FootnoteDefinition(name)) => {
+                self.in_footnote_def = true;
+                self.footnote_name = name.to_string();
+                self.footnote_buffer.clear();
+            }
+            Event::End(TagEnd::FootnoteDefinition) => {
+                self.footnote_defs
+                    .push((self.footnote_name.clone(), self.footnote_buffer.clone()));
+                self.in_footnote_def = false;
+            }
             Event::Start(Tag::Image { dest_url, .. }) => {
                 self.flush_inline(ui);
                 self.image_url = Some(dest_url.to_string());
@@ -407,13 +442,41 @@ pub fn render_preview<'a>(ui: &mut Ui, markdown: &str, ctx: &'a mut PreviewConte
         egui::TextStyle::Body,
         egui::FontId::new(ctx.preview_font_size, egui::FontFamily::Proportional),
     );
-    let parser = Parser::new_ext(markdown, markdown_options());
+    let (front_matter, body) = parse_front_matter(markdown);
+    if let Some(fm) = &front_matter {
+        if let Some(title) = fm.title.as_deref().filter(|t| !t.is_empty()) {
+            ui.heading(title);
+        }
+        if let Some(desc) = fm.description.as_deref().filter(|d| !d.is_empty()) {
+            ui.label(RichText::new(desc).italics().color(ui.visuals().weak_text_color()));
+            ui.add_space(4.0);
+        }
+    }
+    let headings = collect_headings(body);
+    if !headings.is_empty() {
+        ui.label(RichText::new("目录").strong());
+        for entry in &headings {
+            let indent = "  ".repeat(entry.level.saturating_sub(1) as usize);
+            ui.label(format!("{indent}• {}", entry.title));
+        }
+        ui.separator();
+    }
+
+    let parser = Parser::new_ext(body, markdown_options());
     let mut state = PreviewState::new(ctx);
 
     for event in parser {
         state.handle_event(ui, event);
     }
     state.flush_inline(ui);
+
+    if !state.footnote_defs.is_empty() {
+        ui.separator();
+        ui.label(RichText::new("脚注").strong());
+        for (name, text) in state.footnote_defs {
+            ui.label(RichText::new(format!("[^{name}]: {text}")).small());
+        }
+    }
 }
 
 fn render_table(ui: &mut Ui, headers: &[String], rows: &[Vec<String>]) {
@@ -517,20 +580,13 @@ pub fn is_image_path(path: &Path) -> bool {
 }
 
 fn markdown_options() -> Options {
-    let mut options = Options::empty();
-    options.insert(Options::ENABLE_STRIKETHROUGH);
-    options.insert(Options::ENABLE_TABLES);
-    options.insert(Options::ENABLE_TASKLISTS);
-    options.insert(Options::ENABLE_MATH);
-    options
+    omd_common::markdown_options()
 }
 
 /// Convert Markdown to HTML for export (includes Mermaid block transform).
 pub fn markdown_to_html(markdown: &str) -> String {
-    let parser = Parser::new_ext(markdown, markdown_options());
-    let mut html_output = String::new();
-    html::push_html(&mut html_output, parser);
-    transform_mermaid_blocks(&html_output)
+    let (_, body) = parse_front_matter(markdown);
+    common_html(body)
 }
 
 fn transform_mermaid_blocks(html: &str) -> String {

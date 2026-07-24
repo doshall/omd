@@ -9,6 +9,7 @@ use crate::minimap::{self, MinimapAction};
 use crate::editor_highlight;
 use crate::settings::{self, EditorSettings};
 use crate::sync_scroll::{ScrollMetrics, SyncController};
+use crate::tabs::{RecentFiles, TabStore};
 use eframe::egui;
 use std::path::PathBuf;
 
@@ -30,6 +31,10 @@ const DEFAULT_CONTENT: &str = include_str!("../demo/default.md");
 #[derive(serde::Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct OmdApp {
+    #[serde(default)]
+    tab_store: TabStore,
+    #[serde(default)]
+    recent_files: RecentFiles,
     content: String,
     file_path: Option<PathBuf>,
     modified: bool,
@@ -57,11 +62,16 @@ pub struct OmdApp {
     unsaved_prompt: Option<UnsavedPrompt>,
     #[serde(skip)]
     auto_save_timer: f32,
+    #[serde(skip)]
+    image_lightbox: Option<String>,
 }
 
 impl Default for OmdApp {
     fn default() -> Self {
+        let tab_store = TabStore::new_document(DEFAULT_CONTENT.to_string());
         Self {
+            tab_store,
+            recent_files: RecentFiles::default(),
             content: DEFAULT_CONTENT.to_string(),
             file_path: None,
             modified: false,
@@ -80,19 +90,81 @@ impl Default for OmdApp {
             last_keybinding_mode: KeybindingMode::Standard,
             unsaved_prompt: None,
             auto_save_timer: 0.0,
+            image_lightbox: None,
         }
     }
 }
 
 impl OmdApp {
+    fn sync_active_tab(&mut self) {
+        if let Some(tab) = self.tab_store.active_tab_mut() {
+            tab.content = self.content.clone();
+            tab.file_path = self.file_path.clone();
+            tab.modified = self.modified;
+        }
+    }
+
+    fn load_active_tab(&mut self) {
+        if let Some(tab) = self.tab_store.active_tab() {
+            self.content = tab.content.clone();
+            self.file_path = tab.file_path.clone();
+            self.modified = tab.modified;
+        }
+    }
+
+    fn switch_tab(&mut self, id: &str) -> bool {
+        self.sync_active_tab();
+        if self.tab_store.switch_tab(id) {
+            self.load_active_tab();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn close_tab(&mut self, id: &str) -> bool {
+        self.sync_active_tab();
+        if self.tab_store.close_tab(id) {
+            self.load_active_tab();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn add_tab(&mut self) -> bool {
+        self.sync_active_tab();
+        if self.tab_store.add_tab(String::new()) {
+            self.load_active_tab();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn note_recent_file(&mut self, path: &PathBuf) {
+        self.recent_files.push(path.clone());
+    }
+
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         egui_extras::install_image_loaders(&cc.egui_ctx);
 
-        let app: Self = if let Some(storage) = cc.storage {
+        let mut app: Self = if let Some(storage) = cc.storage {
             eframe::get_value(storage, eframe::APP_KEY).unwrap_or_default()
         } else {
             Self::default()
         };
+
+        if app.tab_store.tabs.is_empty() {
+            let mut store = TabStore::new_document(app.content.clone());
+            if let Some(tab) = store.active_tab_mut() {
+                tab.file_path = app.file_path.clone();
+                tab.modified = app.modified;
+            }
+            app.tab_store = store;
+        } else {
+            app.load_active_tab();
+        }
 
         app.apply_theme(&cc.egui_ctx);
         app
@@ -287,6 +359,8 @@ impl OmdApp {
                     self.content = content;
                     self.file_path = Some(path.clone());
                     self.modified = false;
+                    self.note_recent_file(&path);
+                    self.sync_active_tab();
                     self.set_status(format!("Opened {}", path.display()));
                 }
                 Err(e) => {
@@ -330,6 +404,8 @@ impl OmdApp {
             Ok(()) => {
                 self.file_path = Some(path.clone());
                 self.modified = false;
+                self.note_recent_file(path);
+                self.sync_active_tab();
                 self.set_status(format!("Saved to {}", path.display()));
                 true
             }
@@ -883,6 +959,7 @@ impl OmdApp {
             mermaid_cache: &mut self.mermaid_cache,
             preview_syntax_highlight: self.editor_settings.preview_syntax_highlight,
             preview_font_size: self.editor_settings.preview_font_size,
+            image_lightbox: &mut self.image_lightbox,
         };
         let scroll = egui::ScrollArea::both()
             .id_salt("omd_preview_scroll")
@@ -1063,6 +1140,28 @@ impl eframe::App for OmdApp {
                             self.request_open_file();
                             ui.close_menu();
                         }
+                        if !self.recent_files.paths.is_empty() {
+                            ui.menu_button("Recent Files", |ui| {
+                                let paths: Vec<PathBuf> =
+                                    self.recent_files.paths.iter().cloned().collect();
+                                for path in paths {
+                                    let label = path.display().to_string();
+                                    if ui.button(label).clicked() {
+                                        if self.modified {
+                                            self.unsaved_prompt = Some(UnsavedPrompt::Open);
+                                        } else if let Ok(content) = std::fs::read_to_string(&path) {
+                                            self.content = content;
+                                            self.file_path = Some(path.clone());
+                                            self.modified = false;
+                                            self.note_recent_file(&path);
+                                            self.sync_active_tab();
+                                            self.set_status(format!("Opened {}", path.display()));
+                                        }
+                                        ui.close_menu();
+                                    }
+                                }
+                            });
+                        }
                         if ui.button("Save").clicked() {
                             self.save_file();
                             ui.close_menu();
@@ -1118,6 +1217,57 @@ impl eframe::App for OmdApp {
                             ui.close_menu();
                         }
                     });
+                });
+            });
+        }
+
+        if show_chrome {
+            egui::TopBottomPanel::top("tab_bar").show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    let tab_ids: Vec<String> = self
+                        .tab_store
+                        .tabs
+                        .iter()
+                        .map(|t| t.id.clone())
+                        .collect();
+                    for id in tab_ids {
+                        let label = self
+                            .tab_store
+                            .tabs
+                            .iter()
+                            .find(|t| t.id == id)
+                            .map(crate::tabs::TabStore::tab_label)
+                            .unwrap_or_default();
+                        let display = if self.tab_store.active_id == id && self.modified {
+                            format!("{label} *")
+                        } else {
+                            label
+                        };
+                        let selected = self.tab_store.active_id == id;
+                        if ui.selectable_label(selected, &display).clicked() && !selected {
+                            if self.modified {
+                                self.unsaved_prompt = Some(UnsavedPrompt::Open);
+                            } else {
+                                self.switch_tab(&id);
+                            }
+                        }
+                        if self.tab_store.tabs.len() > 1
+                            && ui.small_button("×").on_hover_text("Close tab").clicked()
+                        {
+                            if self.tab_store.active_id == id && self.modified {
+                                self.unsaved_prompt = Some(UnsavedPrompt::Open);
+                            } else if self.close_tab(&id) {
+                                self.set_status("Tab closed");
+                            }
+                        }
+                    }
+                    if ui.button("+").on_hover_text("New tab").clicked() {
+                        if self.modified {
+                            self.unsaved_prompt = Some(UnsavedPrompt::New);
+                        } else if self.add_tab() {
+                            self.set_status("New tab");
+                        }
+                    }
                 });
             });
         }
@@ -1221,9 +1371,26 @@ impl eframe::App for OmdApp {
         });
 
         ctx.request_repaint();
+
+        if let Some(url) = self.image_lightbox.clone() {
+            let mut open = true;
+            egui::Window::new("Image Preview")
+                .open(&mut open)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    ui.add(
+                        egui::Image::new(&url)
+                            .max_width(ui.available_width().min(900.0)),
+                    );
+                });
+            if !open {
+                self.image_lightbox = None;
+            }
+        }
     }
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        self.sync_active_tab();
         eframe::set_value(storage, eframe::APP_KEY, self);
     }
 }

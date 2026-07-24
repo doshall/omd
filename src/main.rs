@@ -15,6 +15,7 @@ mod minimap;
 mod settings;
 mod sync_scroll;
 mod syntax_highlight;
+mod tabs;
 
 fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {

@@ -1,3 +1,8 @@
+---
+title: omd 功能演示
+description: 脚注、TOC、YAML、复杂 Mermaid 与图片放大测试
+---
+
 # omd 功能演示
 
 欢迎使用 **omd** Markdown 编辑器！本文档展示常用与**复杂图表**示例，便于测试预览、主题切换与导出。
@@ -155,6 +160,10 @@ erDiagram
 
 ## 7. 表格与图片
 
+脚注示例：omd 是轻量编辑器[^note]。
+
+[^note]: 支持桌面、Web 与 Android 三端。
+
 | 平台 | 保存方式 |
 |------|----------|
 | 桌面 | 磁盘文件 |
@@ -162,6 +171,8 @@ erDiagram
 | Android | WebView + 下载 |
 
 ![Rust Logo](https://www.rust-lang.org/static/images/rust-logo-blk.svg)
+
+*点击图片可放大预览（Web / 桌面）。*
 
 ---
 

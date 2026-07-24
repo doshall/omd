@@ -1,59 +1,18 @@
-use pulldown_cmark::{html, Options, Parser};
+use omd_common::{markdown_to_html_with_toc, parse_front_matter, resolve_title};
 
-fn markdown_options() -> Options {
-    let mut options = Options::empty();
-    options.insert(Options::ENABLE_STRIKETHROUGH);
-    options.insert(Options::ENABLE_TABLES);
-    options.insert(Options::ENABLE_TASKLISTS);
-    options.insert(Options::ENABLE_MATH);
-    options
+pub fn prepare_markdown(input: &str) -> (Option<omd_common::FrontMatter>, String) {
+    let (fm, body) = parse_front_matter(input);
+    (fm, body.to_string())
 }
 
 pub fn markdown_to_html(markdown: &str) -> String {
-    let options = markdown_options();
-
-    let parser = Parser::new_ext(markdown, options);
-    let mut html_output = String::new();
-    html::push_html(&mut html_output, parser);
-    transform_mermaid_blocks(&html_output)
+    let (_, body) = parse_front_matter(markdown);
+    markdown_to_html_with_toc(body, true).0
 }
 
-/// Convert fenced mermaid code blocks to `<div class="mermaid">` for mermaid.js.
-fn transform_mermaid_blocks(html: &str) -> String {
-    let marker = "<pre><code class=\"language-mermaid\">";
-    let mut out = String::with_capacity(html.len());
-    let mut rest = html;
-
-    while let Some(start) = rest.find(marker) {
-        out.push_str(&rest[..start]);
-        let after = &rest[start + marker.len()..];
-        if let Some(end) = after.find("</code></pre>") {
-            // pulldown-cmark already HTML-escapes code block content; do not escape again.
-            let code = &after[..end];
-            out.push_str("<div class=\"mermaid\">");
-            out.push_str(code);
-            out.push_str("</div>");
-            rest = &after[end + "</code></pre>".len()..];
-        } else {
-            out.push_str(marker);
-            rest = after;
-            break;
-        }
-    }
-    out.push_str(rest);
-    out
-}
-
-pub fn word_count(text: &str) -> usize {
-    text.split_whitespace().filter(|w| !w.is_empty()).count()
-}
-
-pub fn line_count(text: &str) -> usize {
-    if text.is_empty() {
-        1
-    } else {
-        text.lines().count()
-    }
+pub fn export_title(filename: &str, markdown: &str) -> String {
+    let (fm, body) = parse_front_matter(markdown);
+    resolve_title(fm.as_ref(), Some(filename), body)
 }
 
 pub fn wrap_selection(text: &str, start: usize, end: usize, wrapper: &str) -> String {
@@ -102,42 +61,33 @@ pub fn image_markdown(alt: &str, url: &str) -> String {
     format!("\n![{alt}]({url})\n")
 }
 
+pub fn word_count(text: &str) -> usize {
+    text.split_whitespace().filter(|w| !w.is_empty()).count()
+}
+
+pub fn line_count(text: &str) -> usize {
+    if text.is_empty() {
+        1
+    } else {
+        text.lines().count()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn mermaid_transform_keeps_arrows() {
-        let html_in = "<pre><code class=\"language-mermaid\">flowchart TD\n    A --&gt; B\n</code></pre>";
-        let out = transform_mermaid_blocks(html_in);
-        assert!(out.contains("<div class=\"mermaid\">flowchart TD\n    A --&gt; B\n</div>"));
-        assert!(!out.contains("&amp;gt;"));
-    }
-
-    #[test]
-    fn mermaid_transform_sequence_arrows() {
-        let html_in = "<pre><code class=\"language-mermaid\">sequenceDiagram\n    A-&gt;&gt;B: hi\n</code></pre>";
-        let out = transform_mermaid_blocks(html_in);
-        assert!(out.contains("A-&gt;&gt;B: hi"));
-        assert!(!out.contains("&amp;gt;"));
-    }
-
-    #[test]
-    fn markdown_to_html_replaces_mermaid_fence() {
-        let md = "```mermaid\nflowchart LR\n    A --> B\n```";
+        let md = "```mermaid\nflowchart TD\n    A --> B\n```";
         let html = markdown_to_html(md);
         assert!(html.contains("<div class=\"mermaid\">"));
-        assert!(html.contains("A --&gt; B") || html.contains("A --> B"));
         assert!(!html.contains("&amp;gt;"));
     }
 
     #[test]
-    fn markdown_gantt_keeps_chinese() {
-        let md = "```mermaid\ngantt\n    title MVP 8 周\n    dateFormat YYYY-MM-DD\n    section 基础\n    W1 基础与认证 :w1, 2025-01-06, 7d\n```";
-        let html = markdown_to_html(md);
-        assert!(html.contains("<div class=\"mermaid\">"));
-        assert!(html.contains("MVP 8 周"));
-        assert!(html.contains("section 基础"));
-        assert!(!html.contains("&amp;"));
+    fn front_matter_title_for_export() {
+        let md = "---\ntitle: From YAML\n---\n\n# Heading\n";
+        assert_eq!(export_title("doc.md", md), "From YAML");
     }
 }

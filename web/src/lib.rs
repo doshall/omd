@@ -1,6 +1,7 @@
 mod editor_highlight;
 mod export;
 mod find_replace;
+mod recent;
 mod tabs;
 mod vim_ex;
 mod keybindings;
@@ -41,6 +42,9 @@ extern "C" {
 
     #[wasm_bindgen(js_namespace = window, js_name = omdRenderMath)]
     fn omd_render_math();
+
+    #[wasm_bindgen(js_namespace = window, js_name = omdInitImageLightbox)]
+    fn omd_init_image_lightbox();
 
     #[wasm_bindgen(js_namespace = window, js_name = omdPrintHtml)]
     fn omd_print_html(html: &str);
@@ -177,6 +181,7 @@ fn App() -> impl IntoView {
     let (settings_open, set_settings_open) = signal(false);
     let (undo_hint, set_undo_hint) = signal(String::new());
     let (filename, set_filename) = signal(initial_tab.filename);
+    let (recent_files, set_recent_files) = signal(recent::load_recent());
     let initial_snapshot = initial_tab.saved_snapshot;
     let (saved_snapshot, set_saved_snapshot) = signal(initial_snapshot);
     let (saved_hint, set_saved_hint) = signal(false);
@@ -261,6 +266,7 @@ fn App() -> impl IntoView {
             gloo_timers::future::TimeoutFuture::new(50).await;
             omd_render_mermaid();
             omd_render_math();
+            omd_init_image_lightbox();
             if syntax {
                 omd_highlight_code();
             }
@@ -857,6 +863,7 @@ fn App() -> impl IntoView {
                 let set_content = set_content.clone();
                 let set_filename = set_filename.clone();
                 let set_saved_snapshot = set_saved_snapshot.clone();
+                let set_recent_files = set_recent_files.clone();
                 let name = file.name();
                 let reader = web_sys::FileReader::new().unwrap();
                 let reader_clone = reader.clone();
@@ -871,7 +878,11 @@ fn App() -> impl IntoView {
                 reader.set_onload(Some(onload.as_ref().unchecked_ref()));
                 onload.forget();
                 let _ = reader.read_as_text(&file);
-                set_filename.set(name);
+                set_filename.set(name.clone());
+                set_recent_files.update(|r| {
+                    r.push(name);
+                    recent::save_recent(r);
+                });
             }
         }
         input.set_value("");
@@ -922,6 +933,10 @@ fn App() -> impl IntoView {
                             let text = content.get();
                             let name = filename.get();
                             download_file(&text, &name);
+                            set_recent_files.update(|r| {
+                                r.push(name.clone());
+                                recent::save_recent(r);
+                            });
                             set_saved_snapshot.set(text);
                         }
                     }>"下载"</button>
@@ -1037,6 +1052,50 @@ fn App() -> impl IntoView {
                         });
                     }
                 }>"+"</button>
+            </div>
+
+            <div class="recent-bar">
+                {move || {
+                    recent_files.get().entries.iter().take(6).map(|entry| {
+                        let name = entry.filename.clone();
+                        let set_tab_store = set_tab_store.clone();
+                        let set_content = set_content.clone();
+                        let set_filename = set_filename.clone();
+                        let set_saved_snapshot = set_saved_snapshot.clone();
+                        let content = content.clone();
+                        let saved_snapshot = saved_snapshot.clone();
+                        view! {
+                            <button class="btn btn-sm recent-item" title="打开最近文件"
+                                on:click=move |_| {
+                                    if unsaved::is_modified(&content.get(), &saved_snapshot.get())
+                                        && !unsaved::confirm_discard_changes()
+                                    {
+                                        return;
+                                    }
+                                    let mut found = false;
+                                    set_tab_store.update(|store| {
+                                        if let Some(tab) = store.tabs.iter().find(|t| t.filename == name) {
+                                            let id = tab.id.clone();
+                                            if store.switch_tab(&id) {
+                                                switch_tab_content(
+                                                    store,
+                                                    set_content,
+                                                    set_filename,
+                                                    set_saved_snapshot,
+                                                );
+                                                found = true;
+                                            }
+                                        }
+                                    });
+                                    if !found {
+                                        web_sys::window()
+                                            .and_then(|w| w.alert_with_message(&format!("未找到已打开的「{name}」，请从「打开」重新导入")).ok());
+                                    }
+                                }
+                            >{name.clone()}</button>
+                        }
+                    }).collect_view()
+                }}
             </div>
 
             <input type="file" accept=".md,.markdown,.txt" class="file-input-hidden"
