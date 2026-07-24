@@ -13,6 +13,7 @@ mod line_gutter;
 mod markdown;
 mod mermaid;
 mod minimap;
+mod project;
 mod settings;
 mod sync_scroll;
 mod syntax_highlight;
