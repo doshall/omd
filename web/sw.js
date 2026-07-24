@@ -1,4 +1,4 @@
-const CACHE_NAME = 'omd-web-v5';
+const CACHE_NAME = 'omd-web-v6';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -31,18 +31,36 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      const network = fetch(event.request)
-        .then((response) => {
-          if (response && response.status === 200 && response.type === 'basic') {
+    (async () => {
+      const isNavigation =
+        event.request.mode === 'navigate' ||
+        (event.request.method === 'GET' &&
+          event.request.headers.get('accept')?.includes('text/html'));
+
+      if (isNavigation) {
+        try {
+          const response = await fetch(event.request);
+          if (response && response.status === 200) {
             const copy = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
           }
           return response;
-        })
-        .catch(() => cached);
+        } catch (err) {
+          const cached = await caches.match(event.request);
+          if (cached) return cached;
+          throw err;
+        }
+      }
 
-      return cached || network;
-    })
+      const cached = await caches.match(event.request);
+      if (cached) return cached;
+
+      const response = await fetch(event.request);
+      if (response && response.status === 200 && response.type === 'basic') {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+      }
+      return response;
+    })()
   );
 });

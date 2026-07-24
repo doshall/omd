@@ -155,15 +155,13 @@ pub fn needs_idb_hydration() -> bool {
     idb::storage_uses_idb() || load_storage(STORAGE_TABS_META).is_some()
 }
 
-pub fn load_tab_store(default_content: String, default_filename: String) -> TabStore {
-    if needs_idb_hydration() {
-        return TabStore::default_with_content(String::new(), "document.md".to_string());
-    }
-
+pub fn load_inline_tab_store(default_content: String, default_filename: String) -> TabStore {
     if let Some(json) = load_storage(STORAGE_TABS) {
-        if let Ok(store) = serde_json::from_str::<TabStore>(&json) {
-            if !store.tabs.is_empty() && store.tabs.iter().any(|t| t.id == store.active_id) {
-                return store;
+        if !json.is_empty() {
+            if let Ok(store) = serde_json::from_str::<TabStore>(&json) {
+                if !store.tabs.is_empty() && store.tabs.iter().any(|t| t.id == store.active_id) {
+                    return store;
+                }
             }
         }
     }
@@ -171,6 +169,19 @@ pub fn load_tab_store(default_content: String, default_filename: String) -> TabS
     let content = load_storage(LEGACY_CONTENT).unwrap_or(default_content);
     let filename = load_storage(LEGACY_FILENAME).unwrap_or(default_filename);
     TabStore::default_with_content(content, filename)
+}
+
+pub fn clear_idb_storage_meta() {
+    let _ = save_storage(STORAGE_TABS_META, "");
+    let _ = save_storage(idb::STORAGE_VERSION_KEY, "");
+}
+
+pub fn load_tab_store(default_content: String, default_filename: String) -> TabStore {
+    if needs_idb_hydration() {
+        return TabStore::default_with_content(String::new(), "document.md".to_string());
+    }
+
+    load_inline_tab_store(default_content, default_filename)
 }
 
 pub fn persist_tab_store(store: &TabStore) {
