@@ -515,9 +515,9 @@ fn transform_mermaid_blocks(html: &str) -> String {
         out.push_str(&rest[..start]);
         let after = &rest[start + marker.len()..];
         if let Some(end) = after.find("</code></pre>") {
-            let code = html_escape_export(&after[..end]);
+            let code = &after[..end];
             out.push_str("<div class=\"mermaid\">");
-            out.push_str(&code);
+            out.push_str(code);
             out.push_str("</div>");
             rest = &after[end + "</code></pre>".len()..];
         } else {
@@ -530,10 +530,16 @@ fn transform_mermaid_blocks(html: &str) -> String {
     out
 }
 
-fn html_escape_export(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
+#[cfg(test)]
+mod markdown_html_tests {
+    use super::*;
+
+    #[test]
+    fn mermaid_html_does_not_double_escape_arrows() {
+        let html_in = "<pre><code class=\"language-mermaid\">flowchart TD\n    A --&gt; B\n</code></pre>";
+        let out = transform_mermaid_blocks(html_in);
+        assert!(!out.contains("&amp;gt;"));
+    }
 }
 
 #[cfg(test)]

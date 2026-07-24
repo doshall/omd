@@ -22,9 +22,10 @@ fn transform_mermaid_blocks(html: &str) -> String {
         out.push_str(&rest[..start]);
         let after = &rest[start + marker.len()..];
         if let Some(end) = after.find("</code></pre>") {
-            let code = html_escape(&after[..end]);
+            // pulldown-cmark already HTML-escapes code block content; do not escape again.
+            let code = &after[..end];
             out.push_str("<div class=\"mermaid\">");
-            out.push_str(&code);
+            out.push_str(code);
             out.push_str("</div>");
             rest = &after[end + "</code></pre>".len()..];
         } else {
@@ -35,12 +36,6 @@ fn transform_mermaid_blocks(html: &str) -> String {
     }
     out.push_str(rest);
     out
-}
-
-fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
 }
 
 pub fn word_count(text: &str) -> usize {
@@ -99,4 +94,34 @@ pub fn insert_at_cursor(text: &str, cursor: usize, insertion: &str) -> String {
 
 pub fn image_markdown(alt: &str, url: &str) -> String {
     format!("\n![{alt}]({url})\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mermaid_transform_keeps_arrows() {
+        let html_in = "<pre><code class=\"language-mermaid\">flowchart TD\n    A --&gt; B\n</code></pre>";
+        let out = transform_mermaid_blocks(html_in);
+        assert!(out.contains("<div class=\"mermaid\">flowchart TD\n    A --&gt; B\n</div>"));
+        assert!(!out.contains("&amp;gt;"));
+    }
+
+    #[test]
+    fn mermaid_transform_sequence_arrows() {
+        let html_in = "<pre><code class=\"language-mermaid\">sequenceDiagram\n    A-&gt;&gt;B: hi\n</code></pre>";
+        let out = transform_mermaid_blocks(html_in);
+        assert!(out.contains("A-&gt;&gt;B: hi"));
+        assert!(!out.contains("&amp;gt;"));
+    }
+
+    #[test]
+    fn markdown_to_html_replaces_mermaid_fence() {
+        let md = "```mermaid\nflowchart LR\n    A --> B\n```";
+        let html = markdown_to_html(md);
+        assert!(html.contains("<div class=\"mermaid\">"));
+        assert!(html.contains("A --&gt; B") || html.contains("A --> B"));
+        assert!(!html.contains("&amp;gt;"));
+    }
 }
