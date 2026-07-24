@@ -4,7 +4,7 @@ resolver = "2"
 
 [package]
 name = "omd"
-version = "0.9.2"
+version = "0.9.3"
 edition = "2021"
 description = "A lightweight Markdown editor written in Rust"
 license = "MIT"
