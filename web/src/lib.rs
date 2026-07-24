@@ -11,6 +11,7 @@ mod clipboard;
 mod line_gutter;
 mod markdown;
 mod minimap;
+mod project;
 mod settings;
 mod sync_scroll;
 mod unsaved;
@@ -25,6 +26,7 @@ use web_sys::{Blob, BlobPropertyBag, HtmlInputElement, HtmlTextAreaElement, Keyb
 
 const STORAGE_THEME: &str = "omd-web-theme";
 const STORAGE_VIEW: &str = "omd-web-view";
+const STORAGE_PROJECT_OPEN: &str = "omd-web-project-sidebar";
 
 use settings::EditorSettings;
 use keybindings::{KeybindingMode, KeybindingState, VimMode};
@@ -206,7 +208,21 @@ fn App() -> impl IntoView {
     let minimap_ref = NodeRef::<Canvas>::new();
     let minimap_drag = RwSignal::new(false);
     let scroll_sync_guard = RwSignal::new(false);
+    let initial_project_open = tabs::load_storage(STORAGE_PROJECT_OPEN)
+        .map(|v| v == "1")
+        .unwrap_or(false);
+
+    let (project_entries, set_project_entries) = signal(Vec::<project::ProjectEntry>::new());
+    let (project_label, set_project_label) = signal(String::new());
+    let (project_sidebar_open, set_project_sidebar_open) = signal(initial_project_open);
+
+    Effect::new(move |_| {
+        let open = if project_sidebar_open.get() { "1" } else { "0" };
+        tabs::save_storage(STORAGE_PROJECT_OPEN, open);
+    });
+
     let file_input_ref = NodeRef::<Input>::new();
+    let folder_input_ref = NodeRef::<Input>::new();
     let image_input_ref = NodeRef::<Input>::new();
     let command_input_ref = NodeRef::<Input>::new();
 
@@ -987,6 +1003,24 @@ fn App() -> impl IntoView {
         input.set_value("");
     };
 
+    let on_folder_change = {
+        let set_project_entries = set_project_entries.clone();
+        let set_project_label = set_project_label.clone();
+        let set_project_sidebar_open = set_project_sidebar_open.clone();
+        move |ev: Event| {
+            let input: HtmlInputElement = ev.target().unwrap().unchecked_into();
+            if let Some(files) = input.files() {
+                let entries = project::ingest_file_list(&files);
+                set_project_label.set(
+                    project::folder_label_from_entries(&entries).unwrap_or_default(),
+                );
+                set_project_entries.set(entries);
+                set_project_sidebar_open.set(true);
+            }
+            input.set_value("");
+        }
+    };
+
     view! {
         <div id="app" class=move || if editor_settings.get().focus_mode { "focus-mode" } else { "" }>
             {move || storage_loading.get().then(|| view! {
@@ -1027,6 +1061,17 @@ fn App() -> impl IntoView {
                             }
                         }
                     }>"打开"</button>
+                    <button class="btn" on:click={
+                        let folder_input_ref = folder_input_ref.clone();
+                        move |_| {
+                            if let Some(input) = folder_input_ref.get() {
+                                input.click();
+                            }
+                        }
+                    }>"文件夹"</button>
+                    <button class="btn btn-icon" title="项目侧边栏"
+                        on:click=move |_| set_project_sidebar_open.update(|open| *open = !*open)
+                    >"📁"</button>
                     <button class="btn btn-primary" on:click={
                         let content = content.clone();
                         let filename = filename.clone();
@@ -1243,6 +1288,9 @@ fn App() -> impl IntoView {
 
             <input type="file" accept=".md,.markdown,.txt" class="file-input-hidden"
                 node_ref=file_input_ref on:change=on_file_change />
+            <input type="file" class="file-input-hidden" multiple=true
+                prop:webkitdirectory=true
+                node_ref=folder_input_ref on:change=on_folder_change />
             <input type="file" accept="image/*" class="file-input-hidden"
                 node_ref=image_input_ref on:change=on_image_file />
 
@@ -1699,6 +1747,97 @@ fn App() -> impl IntoView {
                 }
             })}
 
+            <div class="workspace">
+            {move || project_sidebar_open.get().then(|| {
+                let filename = filename.clone();
+                let content = content.clone();
+                let saved_snapshot = saved_snapshot.clone();
+                let set_content = set_content.clone();
+                let set_filename = set_filename.clone();
+                let set_saved_snapshot = set_saved_snapshot.clone();
+                let set_recent_files = set_recent_files.clone();
+                view! {
+                    <aside class="project-sidebar">
+                        <div class="pane-header">"项目文件夹"</div>
+                        <div class="project-sidebar-body">
+                            <p class="project-sidebar-label">
+                                {move || {
+                                    let label = project_label.get();
+                                    if label.is_empty() {
+                                        "选择文件夹以浏览 Markdown 文件".to_string()
+                                    } else {
+                                        label
+                                    }
+                                }}
+                            </p>
+                            <button class="btn project-open-btn" type="button"
+                                on:click={
+                                    let folder_input_ref = folder_input_ref.clone();
+                                    move |_| {
+                                        if let Some(input) = folder_input_ref.get() {
+                                            input.click();
+                                        }
+                                    }
+                                }
+                            >"打开文件夹…"</button>
+                            <ul class="project-file-list">
+                                {move || {
+                                    let active = filename.get();
+                                    project_entries.get().into_iter().map(|entry| {
+                                        let rel = entry.relative_path.clone();
+                                        let display = entry.name.clone();
+                                        let selected = active == entry.name;
+                                        let content = content.clone();
+                                        let saved_snapshot = saved_snapshot.clone();
+                                        let set_content = set_content.clone();
+                                        let set_filename = set_filename.clone();
+                                        let set_saved_snapshot = set_saved_snapshot.clone();
+                                        let set_recent_files = set_recent_files.clone();
+                                        view! {
+                                            <li>
+                                                <button
+                                                    type="button"
+                                                    class=if selected { "project-file active" } else { "project-file" }
+                                                    on:click=move |_| {
+                                                        if unsaved::is_modified(&content.get(), &saved_snapshot.get())
+                                                            && !unsaved::confirm_discard_changes()
+                                                        {
+                                                            return;
+                                                        }
+                                                        let rel_for_load = rel.clone();
+                                                        let rel_for_name = rel.clone();
+                                                        let set_content = set_content.clone();
+                                                        let set_filename = set_filename.clone();
+                                                        let set_saved_snapshot = set_saved_snapshot.clone();
+                                                        let set_recent_files = set_recent_files.clone();
+                                                        project::load_project_file(&rel_for_load, move |text| {
+                                                            if let Some(text) = text {
+                                                                let name = std::path::Path::new(&rel_for_name)
+                                                                    .file_name()
+                                                                    .and_then(|s| s.to_str())
+                                                                    .unwrap_or("document.md")
+                                                                    .to_string();
+                                                                set_saved_snapshot.set(text.clone());
+                                                                set_content.set(text.clone());
+                                                                set_filename.set(name.clone());
+                                                                set_recent_files.update(|r| {
+                                                                    r.push(name, text);
+                                                                    recent::save_recent(r);
+                                                                });
+                                                            }
+                                                        });
+                                                    }
+                                                >{display}</button>
+                                            </li>
+                                        }
+                                    }).collect_view()
+                                }}
+                            </ul>
+                        </div>
+                    </aside>
+                }
+            })}
+
             <div class=move || format!("main {}", view_mode.get().css_class())>
                 <div class="pane editor-pane">
                     <div class="pane-header">"编辑"</div>
@@ -1867,6 +2006,7 @@ fn App() -> impl IntoView {
                         inner_html=preview_html
                     ></div>
                 </div>
+            </div>
             </div>
 
             <footer class="status-bar">

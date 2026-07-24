@@ -4,6 +4,19 @@
 
 ## [未发布]
 
+## [0.8.0] - 2026-07-24
+
+### 新增
+
+- **项目文件夹侧边栏**（桌面 + Web）：打开文件夹后浏览其中 Markdown 文件并快速切换
+  - 桌面：`File → Open Folder…`，`View → Project Sidebar`，左侧 `SidePanel` 列出当前目录 `.md` / `.txt` 文件
+  - Web / Android：`文件夹` 按钮选择目录（`webkitdirectory`），`📁` 切换侧边栏；Android 复用 Web 压缩与侧边栏
+- **Android 版本对齐**：`versionName` 升至 **0.8.0**，与 Web 资源同步
+
+### 变更
+
+- 版本号升至 **0.8.0**（`omd`、`omd-common`、`omd-web`）
+
 ## [0.7.0] - 2026-07-24
 
 ### 新增

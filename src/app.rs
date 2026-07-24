@@ -9,15 +9,17 @@ use crate::minimap::{self, MinimapAction};
 use crate::editor_highlight;
 use crate::settings::{self, EditorSettings};
 use crate::sync_scroll::{ScrollMetrics, SyncController};
+use crate::project::{self, ProjectFolder};
 use crate::tabs::{RecentFiles, TabStore};
 use eframe::egui;
 use std::path::PathBuf;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 enum UnsavedPrompt {
     Close,
     New,
     Open,
+    OpenPath(PathBuf),
 }
 
 enum UnsavedDialogAction {
@@ -44,6 +46,12 @@ pub struct OmdApp {
     status_message: String,
     status_timer: f32,
     editor_settings: EditorSettings,
+    #[serde(default)]
+    project_folder: ProjectFolder,
+    #[serde(skip)]
+    project_files: Vec<PathBuf>,
+    #[serde(skip)]
+    show_project_sidebar: bool,
     #[serde(skip)]
     settings_open: bool,
     #[serde(skip)]
@@ -91,6 +99,9 @@ impl Default for OmdApp {
             unsaved_prompt: None,
             auto_save_timer: 0.0,
             image_lightbox: None,
+            project_folder: ProjectFolder::default(),
+            project_files: Vec::new(),
+            show_project_sidebar: false,
         }
     }
 }
@@ -167,6 +178,10 @@ impl OmdApp {
         }
 
         app.apply_theme(&cc.egui_ctx);
+        app.project_files = app.project_folder.rescan();
+        if app.project_folder.root.is_some() {
+            app.show_project_sidebar = true;
+        }
 
         if let Some(path) = cli_open {
             if path.is_file() {
@@ -213,6 +228,29 @@ impl OmdApp {
         }
     }
 
+    fn request_open_path(&mut self, path: PathBuf) {
+        if self.modified {
+            self.unsaved_prompt = Some(UnsavedPrompt::OpenPath(path));
+        } else {
+            self.load_path(path);
+        }
+    }
+
+    fn open_project_folder(&mut self) {
+        let mut dialog = rfd::FileDialog::new();
+        if let Some(root) = self.project_folder.root.as_ref() {
+            dialog = dialog.set_directory(root);
+        } else if let Some(parent) = self.file_path.as_ref().and_then(|p| p.parent()) {
+            dialog = dialog.set_directory(parent);
+        }
+        if let Some(root) = dialog.pick_folder() {
+            self.project_folder.root = Some(root.clone());
+            self.project_files = project::scan_markdown_files(&root);
+            self.show_project_sidebar = true;
+            self.set_status(format!("Opened folder {}", root.display()));
+        }
+    }
+
     fn request_close(&mut self, ctx: &egui::Context) {
         if self.modified {
             self.unsaved_prompt = Some(UnsavedPrompt::Close);
@@ -226,6 +264,7 @@ impl OmdApp {
             UnsavedPrompt::Close => ctx.send_viewport_cmd(egui::ViewportCommand::Close),
             UnsavedPrompt::New => self.new_file(),
             UnsavedPrompt::Open => self.open_file(),
+            UnsavedPrompt::OpenPath(path) => self.load_path(path),
         }
     }
 
@@ -247,14 +286,16 @@ impl OmdApp {
     }
 
     fn render_unsaved_dialog(&mut self, ctx: &egui::Context) {
-        let Some(prompt) = self.unsaved_prompt else {
+        let Some(ref prompt) = self.unsaved_prompt else {
             return;
         };
 
         let message = match prompt {
             UnsavedPrompt::Close => "Save changes before closing?",
             UnsavedPrompt::New => "Save changes before creating a new file?",
-            UnsavedPrompt::Open => "Save changes before opening another file?",
+            UnsavedPrompt::Open | UnsavedPrompt::OpenPath(_) => {
+                "Save changes before opening another file?"
+            }
         };
 
         egui::Window::new("Unsaved Changes")
@@ -1184,6 +1225,10 @@ impl eframe::App for OmdApp {
                             self.request_open_file();
                             ui.close_menu();
                         }
+                        if ui.button("Open Folder…").clicked() {
+                            self.open_project_folder();
+                            ui.close_menu();
+                        }
                         if !self.recent_files.paths.is_empty() {
                             ui.menu_button("Recent Files", |ui| {
                                 let paths: Vec<PathBuf> =
@@ -1241,6 +1286,10 @@ impl eframe::App for OmdApp {
                     });
 
                     ui.menu_button("View", |ui| {
+                        if ui
+                            .checkbox(&mut self.show_project_sidebar, "Project Sidebar")
+                            .changed()
+                        {}
                         if ui
                             .checkbox(&mut self.show_preview, "Show Preview")
                             .changed()
@@ -1355,6 +1404,46 @@ impl eframe::App for OmdApp {
         settings::render_settings_window(ctx, &mut self.settings_open, &mut self.editor_settings);
 
         self.render_unsaved_dialog(ctx);
+
+        if show_chrome && self.show_project_sidebar {
+            egui::SidePanel::left("project_sidebar")
+                .default_width(220.0)
+                .min_width(160.0)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    ui.heading("Project");
+                    if let Some(root) = &self.project_folder.root {
+                        ui.label(
+                            egui::RichText::new(root.display().to_string())
+                                .small()
+                                .weak(),
+                        );
+                    } else {
+                        ui.label(
+                            egui::RichText::new("No folder open")
+                                .small()
+                                .weak(),
+                        );
+                    }
+                    if ui.button("Open Folder…").clicked() {
+                        self.open_project_folder();
+                    }
+                    ui.separator();
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        let active = self.file_path.clone();
+                        for path in self.project_files.clone() {
+                            let name = path
+                                .file_name()
+                                .and_then(|s| s.to_str())
+                                .unwrap_or("?");
+                            let selected = active.as_ref() == Some(&path);
+                            if ui.selectable_label(selected, name).clicked() {
+                                self.request_open_path(path);
+                            }
+                        }
+                    });
+                });
+        }
 
         egui::CentralPanel::default().show(ctx, |ui| {
             if focus_mode {

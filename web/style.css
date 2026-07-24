@@ -354,6 +354,71 @@ html, body {
     display: none;
 }
 
+.workspace {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.project-sidebar {
+    width: 220px;
+    min-width: 160px;
+    max-width: 40vw;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.project-sidebar-body {
+    flex: 1;
+    overflow: auto;
+    padding: 0.5rem 0.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.project-sidebar-label {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    word-break: break-all;
+}
+
+.project-open-btn {
+    width: 100%;
+}
+
+.project-file-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.project-file {
+    width: 100%;
+    text-align: left;
+    font-size: 0.85rem;
+    padding: 0.35rem 0.5rem;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+}
+
+.project-file:hover {
+    background: var(--toolbar-bg);
+}
+
+.project-file.active {
+    background: var(--accent);
+    color: #fff;
+}
+
 .main {
     display: flex;
     flex: 1;
@@ -756,7 +821,10 @@ html, body {
 #app.focus-mode .status-bar,
 #app.focus-mode .preview-pane,
 #app.focus-mode .divider,
-#app.focus-mode .view-toggle {
+#app.focus-mode .view-toggle,
+#app.focus-mode .project-sidebar,
+#app.focus-mode .tab-bar,
+#app.focus-mode .recent-bar {
     display: none !important;
 }
 
