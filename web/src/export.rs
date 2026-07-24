@@ -1,4 +1,5 @@
 use crate::markdown;
+use omd_common::{parse_front_matter, resolve_title};
 
 const EXPORT_CSS: &str = r#"
 body {
@@ -66,6 +67,17 @@ footer {
   opacity: 0.65;
   text-align: center;
 }
+.toc {
+  margin: 0.75rem 0 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #dee2e6;
+}
+body.dark .toc { border-color: #373a40; background: #25262b; }
+body.light .toc { background: #f8f9fa; }
+.toc ul { margin: 0.35rem 0 0; padding-left: 1.25rem; }
+.footnotes { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #dee2e6; font-size: 0.9rem; }
+body.dark .footnotes { border-top-color: #373a40; }
 "#;
 
 const PRINT_CSS: &str = r#"
@@ -171,23 +183,8 @@ mermaid.initialize({{ startOnLoad: false, theme: '{mermaid_theme}', securityLeve
 }
 
 pub fn export_title(filename: &str, markdown: &str) -> String {
-    let stem = filename
-        .strip_suffix(".md")
-        .or_else(|| filename.strip_suffix(".markdown"))
-        .or_else(|| filename.strip_suffix(".txt"))
-        .unwrap_or(filename);
-    if !stem.is_empty() && stem != "document" {
-        return stem.to_string();
-    }
-    markdown
-        .lines()
-        .find_map(|line| {
-            let trimmed = line.trim();
-            trimmed.strip_prefix("# ").map(str::trim)
-        })
-        .filter(|title| !title.is_empty())
-        .unwrap_or("document")
-        .to_string()
+    let (fm, body) = parse_front_matter(markdown);
+    resolve_title(fm.as_ref(), Some(filename), body)
 }
 
 pub fn html_filename(filename: &str) -> String {

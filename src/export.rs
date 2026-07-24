@@ -1,4 +1,5 @@
 use crate::markdown;
+use omd_common::{parse_front_matter, resolve_title};
 use std::path::Path;
 
 const EXPORT_CSS: &str = r#"
@@ -67,6 +68,17 @@ footer {
   opacity: 0.65;
   text-align: center;
 }
+.toc {
+  margin: 0.75rem 0 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 6px;
+  border: 1px solid #dee2e6;
+}
+body.dark .toc { border-color: #373a40; background: #25262b; }
+body.light .toc { background: #f8f9fa; }
+.toc ul { margin: 0.35rem 0 0; padding-left: 1.25rem; }
+.footnotes { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #dee2e6; font-size: 0.9rem; }
+body.dark .footnotes { border-top-color: #373a40; }
 "#;
 
 const PRINT_CSS: &str = r#"
@@ -174,22 +186,11 @@ mermaid.initialize({{ startOnLoad: false, theme: '{mermaid_theme}', securityLeve
 
 /// Derive a page title from a file path or markdown content.
 pub fn export_title(file_path: Option<&Path>, markdown: &str) -> String {
-    if let Some(path) = file_path {
-        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-            if !stem.is_empty() {
-                return stem.to_string();
-            }
-        }
-    }
-    markdown
-        .lines()
-        .find_map(|line| {
-            let trimmed = line.trim();
-            trimmed.strip_prefix("# ").map(str::trim)
-        })
-        .filter(|title| !title.is_empty())
-        .unwrap_or("document")
-        .to_string()
+    let (fm, body) = parse_front_matter(markdown);
+    let filename = file_path
+        .and_then(|p| p.file_name())
+        .and_then(|s| s.to_str());
+    resolve_title(fm.as_ref(), filename, body)
 }
 
 /// Suggest an `.html` filename from a markdown path or default name.

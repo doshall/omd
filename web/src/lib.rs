@@ -1,6 +1,7 @@
 mod editor_highlight;
 mod export;
 mod find_replace;
+mod recent;
 mod tabs;
 mod vim_ex;
 mod keybindings;
@@ -26,142 +27,7 @@ const STORAGE_VIEW: &str = "omd-web-view";
 use settings::EditorSettings;
 use keybindings::{KeybindingMode, KeybindingState, VimMode};
 
-const DEFAULT_CONTENT: &str = r#"# omd Web 功能演示
-
-欢迎使用 **omd** 浏览器版 Markdown 编辑器！本文档展示全部功能，可直接编辑体验。
-
----
-
-## 1. 文本格式
-
-| 格式 | 语法 | 效果 |
-|------|------|------|
-| 粗体 | `**粗体**` | **粗体** |
-| 斜体 | `*斜体*` | *斜体* |
-| 删除线 | `~~删除~~` | ~~删除~~ |
-| 行内代码 | `` `code` `` | `code` |
-| 链接 | `[文字](url)` | [Rust 官网](https://www.rust-lang.org) |
-
-> 工具栏快捷按钮：**B** 粗体 · **I** 斜体 · **S** 删除线 · **</>** 代码 · **🔗** 链接
-
----
-
-## 2. 标题与结构
-
-### 三级标题
-#### 四级标题
-
-- 无序列表项 A
-- 无序列表项 B
-  - 嵌套子项
-
-1. 有序列表第一步
-2. 有序列表第二步
-
-> 引用块：Markdown 让写作更高效。工具栏 **❝** 可快速插入引用。
-
----
-
-## 3. 任务列表
-
-- [x] 实时预览
-- [x] 自动保存到浏览器
-- [x] 导入 / 下载 `.md` 文件
-- [x] 图片与 Mermaid 图表
-- [ ] 继续探索更多功能…
-
----
-
-## 4. 代码块
-
-```rust
-fn main() {
-    println!("Hello, omd Web!");
-}
-```
-
----
-
-## 5. 表格
-
-| 功能 | 操作 | 说明 |
-|------|------|------|
-| 新建 | 顶部「新建」 | 清空编辑器 |
-| 打开 | 顶部「打开」 | 导入 `.md` 文件 |
-| 下载 | 顶部「下载」 | 导出当前内容 |
-| 主题 | 🌙 / ☀️ | 深色 / 浅色切换 |
-| 视图 | ⊞ ✎ 👁 | 分栏 / 仅编辑 / 仅预览 |
-
----
-
-## 6. 图片
-
-### URL 图片
-![Rust Logo](https://www.rust-lang.org/static/images/rust-logo-blk.svg)
-
-### 插入方式
-- **🖼** 工具栏：从相册或文件选择（Base64 嵌入）
-- **🌐** 工具栏：输入图片 URL
-- **粘贴**：在编辑区 `Ctrl+V` / 长按粘贴截图
-- **拖拽**：将图片文件拖入编辑区
-
----
-
-## 7. Mermaid 图表
-
-### 流程图
-```mermaid
-flowchart TD
-    A[编写 Markdown] --> B{实时预览}
-    B --> C[插入图片]
-    B --> D[渲染图表]
-    C --> E[下载 / 自动保存]
-    D --> E
-```
-
-### 时序图
-```mermaid
-sequenceDiagram
-    participant 用户
-    participant 编辑器
-    participant 预览区
-    用户->>编辑器: 输入文字
-    编辑器->>预览区: 即时渲染
-    预览区-->>用户: 显示结果
-```
-
----
-
-## 8. LaTeX 数学公式
-
-行内公式 $E = mc^2$，块级公式：
-
-$$
-\int_0^1 x^2 \, dx = \frac{1}{3}
-$$
-
----
-
-## 9. 视图与主题
-
-| 按钮 | 模式 | 适用场景 |
-|------|------|----------|
-| ⊞ | 分栏 | 电脑宽屏，边写边看 |
-| ✎ | 仅编辑 | 手机竖屏，专注写作 |
-| 👁 | 仅预览 | 阅读成品效果 |
-
-点击右上角 **🌙** / **☀️** 切换深色与浅色主题，Mermaid 图表会同步适配。
-
----
-
-## 10. 自动保存
-
-编辑内容会自动保存到浏览器 **localStorage**，刷新页面后恢复。状态栏显示行数、字数、字符数及「已自动保存」提示。
-
----
-
-**开始编辑吧！** 修改任意文字，右侧预览即时更新。🦀
-"#;
+const DEFAULT_CONTENT: &str = include_str!("../../demo/default.md");
 
 #[wasm_bindgen]
 extern "C" {
@@ -176,6 +42,9 @@ extern "C" {
 
     #[wasm_bindgen(js_namespace = window, js_name = omdRenderMath)]
     fn omd_render_math();
+
+    #[wasm_bindgen(js_namespace = window, js_name = omdInitImageLightbox)]
+    fn omd_init_image_lightbox();
 
     #[wasm_bindgen(js_namespace = window, js_name = omdPrintHtml)]
     fn omd_print_html(html: &str);
@@ -312,6 +181,7 @@ fn App() -> impl IntoView {
     let (settings_open, set_settings_open) = signal(false);
     let (undo_hint, set_undo_hint) = signal(String::new());
     let (filename, set_filename) = signal(initial_tab.filename);
+    let (recent_files, set_recent_files) = signal(recent::load_recent());
     let initial_snapshot = initial_tab.saved_snapshot;
     let (saved_snapshot, set_saved_snapshot) = signal(initial_snapshot);
     let (saved_hint, set_saved_hint) = signal(false);
@@ -396,6 +266,7 @@ fn App() -> impl IntoView {
             gloo_timers::future::TimeoutFuture::new(50).await;
             omd_render_mermaid();
             omd_render_math();
+            omd_init_image_lightbox();
             if syntax {
                 omd_highlight_code();
             }
@@ -992,6 +863,7 @@ fn App() -> impl IntoView {
                 let set_content = set_content.clone();
                 let set_filename = set_filename.clone();
                 let set_saved_snapshot = set_saved_snapshot.clone();
+                let set_recent_files = set_recent_files.clone();
                 let name = file.name();
                 let reader = web_sys::FileReader::new().unwrap();
                 let reader_clone = reader.clone();
@@ -1006,7 +878,11 @@ fn App() -> impl IntoView {
                 reader.set_onload(Some(onload.as_ref().unchecked_ref()));
                 onload.forget();
                 let _ = reader.read_as_text(&file);
-                set_filename.set(name);
+                set_filename.set(name.clone());
+                set_recent_files.update(|r| {
+                    r.push(name);
+                    recent::save_recent(r);
+                });
             }
         }
         input.set_value("");
@@ -1057,6 +933,10 @@ fn App() -> impl IntoView {
                             let text = content.get();
                             let name = filename.get();
                             download_file(&text, &name);
+                            set_recent_files.update(|r| {
+                                r.push(name.clone());
+                                recent::save_recent(r);
+                            });
                             set_saved_snapshot.set(text);
                         }
                     }>"下载"</button>
@@ -1172,6 +1052,50 @@ fn App() -> impl IntoView {
                         });
                     }
                 }>"+"</button>
+            </div>
+
+            <div class="recent-bar">
+                {move || {
+                    recent_files.get().entries.iter().take(6).map(|entry| {
+                        let name = entry.filename.clone();
+                        let set_tab_store = set_tab_store.clone();
+                        let set_content = set_content.clone();
+                        let set_filename = set_filename.clone();
+                        let set_saved_snapshot = set_saved_snapshot.clone();
+                        let content = content.clone();
+                        let saved_snapshot = saved_snapshot.clone();
+                        view! {
+                            <button class="btn btn-sm recent-item" title="打开最近文件"
+                                on:click=move |_| {
+                                    if unsaved::is_modified(&content.get(), &saved_snapshot.get())
+                                        && !unsaved::confirm_discard_changes()
+                                    {
+                                        return;
+                                    }
+                                    let mut found = false;
+                                    set_tab_store.update(|store| {
+                                        if let Some(tab) = store.tabs.iter().find(|t| t.filename == name) {
+                                            let id = tab.id.clone();
+                                            if store.switch_tab(&id) {
+                                                switch_tab_content(
+                                                    store,
+                                                    set_content,
+                                                    set_filename,
+                                                    set_saved_snapshot,
+                                                );
+                                                found = true;
+                                            }
+                                        }
+                                    });
+                                    if !found {
+                                        web_sys::window()
+                                            .and_then(|w| w.alert_with_message(&format!("未找到已打开的「{name}」，请从「打开」重新导入")).ok());
+                                    }
+                                }
+                            >{name.clone()}</button>
+                        }
+                    }).collect_view()
+                }}
             </div>
 
             <input type="file" accept=".md,.markdown,.txt" class="file-input-hidden"

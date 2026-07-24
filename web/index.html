@@ -11,7 +11,7 @@
     <link rel="manifest" href="manifest.webmanifest" />
     <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
     <link data-trunk rel="css" href="style.css" />
-    <link data-trunk rel="rust" data-wasm-opt="z" href="Cargo.toml" />
+    <link data-trunk rel="rust" data-wasm-opt="z" data-wasm-opt-params="--enable-bulk-memory --enable-nontrapping-float-to-int" href="Cargo.toml" />
     <link data-trunk rel="copy-file" href="manifest.webmanifest" />
     <link data-trunk rel="copy-file" href="sw.js" />
     <link data-trunk rel="copy-file" href="assets/mermaid.min.js" />
@@ -117,6 +117,34 @@
             const root = document.querySelector('.preview-content');
             if (!root) return;
             omdRenderMathNodes(root);
+        };
+
+        window.omdInitImageLightbox = function () {
+            const root = document.querySelector('.preview-content');
+            if (!root) return;
+            if (root.dataset.omdLightbox === '1') return;
+            root.dataset.omdLightbox = '1';
+            let overlay = document.getElementById('omd-image-lightbox');
+            if (!overlay) {
+                overlay = document.createElement('div');
+                overlay.id = 'omd-image-lightbox';
+                overlay.className = 'image-lightbox';
+                overlay.innerHTML = '<img alt="" /><button type="button" aria-label="关闭">×</button>';
+                document.body.appendChild(overlay);
+                overlay.addEventListener('click', (e) => {
+                    if (e.target === overlay || e.target.tagName === 'BUTTON') {
+                        overlay.classList.remove('open');
+                    }
+                });
+            }
+            const img = overlay.querySelector('img');
+            root.addEventListener('click', (e) => {
+                if (e.target.tagName === 'IMG') {
+                    img.src = e.target.src;
+                    img.alt = e.target.alt || '';
+                    overlay.classList.add('open');
+                }
+            });
         };
 
         window.omdPrintHtml = function (html) {
