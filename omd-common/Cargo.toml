@@ -1,6 +1,6 @@
 [package]
 name = "omd-common"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2021"
 description = "Shared Markdown parsing for omd"
 license = "MIT"
@@ -8,3 +8,4 @@ license = "MIT"
 [dependencies]
 pulldown-cmark = { version = "0.12", features = ["html"] }
 serde = { version = "1", features = ["derive"] }
+flate2 = "1"

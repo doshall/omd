@@ -15,6 +15,7 @@ pub fn markdown_to_html(markdown: &str, settings: &crate::settings::EditorSettin
         MarkdownRenderOptions {
             include_toc: settings.show_toc,
             enable_footnotes: settings.enable_footnotes,
+            locale: settings.locale,
         },
     );
     make_task_lists_interactive(&html)

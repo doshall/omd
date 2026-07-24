@@ -719,13 +719,20 @@ html, body {
     margin-right: auto;
 }
 
-.preview-content .mermaid {
+.preview-content .mermaid,
+.preview-content .plantuml,
+.preview-content .graphviz {
     margin: 0.75rem 0;
     padding: 0.75rem;
     background: var(--toolbar-bg);
     border-radius: 8px;
     overflow-x: auto;
     text-align: center;
+}
+
+.preview-content .plantuml img {
+    max-width: 100%;
+    height: auto;
 }
 
 .preview-content svg {
@@ -879,6 +886,24 @@ html, body {
 .settings-row input[type="range"] {
     flex: 1;
     min-width: 120px;
+}
+
+.settings-row-block {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.settings-textarea {
+    width: 100%;
+    min-height: 5rem;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 0.8rem;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg);
+    color: var(--text);
+    resize: vertical;
 }
 
 .settings-hint {

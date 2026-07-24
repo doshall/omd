@@ -1,6 +1,8 @@
 use pulldown_cmark::{html, HeadingLevel, Options, Parser, TagEnd};
 use std::collections::HashMap;
 
+use crate::locale::{t, Locale};
+
 #[derive(Debug, Clone, Copy)]
 pub struct TocOptions {
     pub max_level: HeadingLevel,
@@ -17,6 +19,7 @@ pub struct TocEntry {
 pub struct MarkdownRenderOptions {
     pub include_toc: bool,
     pub enable_footnotes: bool,
+    pub locale: Locale,
 }
 
 impl Default for MarkdownRenderOptions {
@@ -24,6 +27,7 @@ impl Default for MarkdownRenderOptions {
         Self {
             include_toc: true,
             enable_footnotes: true,
+            locale: Locale::default(),
         }
     }
 }
@@ -139,11 +143,11 @@ pub fn markdown_to_html_with_options_parts(
     let parser = Parser::new_ext(markdown, parser_options);
     let mut html_output = String::new();
     html::push_html(&mut html_output, parser);
-    let html_output = transform_mermaid_blocks(&html_output);
+    let html_output = transform_diagram_blocks(&html_output);
     let html_output = inject_heading_ids(&html_output, &headings);
 
     let toc_html = if options.include_toc && !headings.is_empty() {
-        render_toc_html(&headings)
+        render_toc_html(&headings, options.locale)
     } else {
         String::new()
     };
@@ -163,8 +167,11 @@ fn inject_heading_ids(html: &str, headings: &[TocEntry]) -> String {
     out
 }
 
-fn render_toc_html(headings: &[TocEntry]) -> String {
-    let mut out = String::from("<nav class=\"toc\" aria-label=\"目录\"><strong>目录</strong><ul>");
+fn render_toc_html(headings: &[TocEntry], locale: Locale) -> String {
+    let label = t(locale, "toc");
+    let mut out = format!(
+        "<nav class=\"toc\" aria-label=\"{label}\"><strong>{label}</strong><ul>"
+    );
     for entry in headings {
         let indent = (entry.level.saturating_sub(1) as usize) * 16;
         out.push_str(&format!(
@@ -183,22 +190,29 @@ fn html_escape_text(s: &str) -> String {
         .replace('>', "&gt;")
 }
 
-fn transform_mermaid_blocks(html: &str) -> String {
-    let marker = "<pre><code class=\"language-mermaid\">";
+fn transform_diagram_blocks(html: &str) -> String {
+    let html = transform_codeblock(html, "mermaid", "mermaid");
+    let html = transform_codeblock(&html, "plantuml", "plantuml");
+    let html = transform_codeblock(&html, "graphviz", "graphviz");
+    transform_codeblock(&html, "dot", "graphviz")
+}
+
+fn transform_codeblock(html: &str, language: &str, class_name: &str) -> String {
+    let marker = format!("<pre><code class=\"language-{language}\">");
     let mut out = String::with_capacity(html.len());
     let mut rest = html;
 
-    while let Some(start) = rest.find(marker) {
+    while let Some(start) = rest.find(&marker) {
         out.push_str(&rest[..start]);
         let after = &rest[start + marker.len()..];
         if let Some(end) = after.find("</code></pre>") {
             let code = &after[..end];
-            out.push_str("<div class=\"mermaid\">");
+            out.push_str(&format!("<div class=\"{class_name}\">"));
             out.push_str(code);
             out.push_str("</div>");
             rest = &after[end + "</code></pre>".len()..];
         } else {
-            out.push_str(marker);
+            out.push_str(&marker);
             rest = after;
             break;
         }
@@ -241,6 +255,7 @@ pub fn make_task_lists_interactive(html: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::locale::Locale;
 
     #[test]
     fn interactive_task_lists() {
@@ -277,6 +292,7 @@ mod tests {
             MarkdownRenderOptions {
                 include_toc: false,
                 enable_footnotes: true,
+                ..Default::default()
             },
         );
         assert!(!html.contains("class=\"toc\""));
@@ -290,9 +306,37 @@ mod tests {
             MarkdownRenderOptions {
                 include_toc: true,
                 enable_footnotes: false,
+                ..Default::default()
             },
         );
         assert!(!html.contains("class=\"footnotes\""));
         assert!(!html.contains("fnref"));
+    }
+
+    #[test]
+    fn plantuml_blocks_transform() {
+        let md = "```plantuml\n@startuml\nA -> B\n@enduml\n```";
+        let html = markdown_to_html(md);
+        assert!(html.contains("class=\"plantuml\""));
+    }
+
+    #[test]
+    fn graphviz_blocks_transform() {
+        let md = "```dot\ndigraph { a -> b }\n```";
+        let html = markdown_to_html(md);
+        assert!(html.contains("class=\"graphviz\""));
+    }
+
+    #[test]
+    fn toc_uses_locale_label() {
+        let md = "# Alpha\n\nBody.";
+        let html = markdown_to_html_with_options(
+            md,
+            MarkdownRenderOptions {
+                locale: Locale::En,
+                ..Default::default()
+            },
+        );
+        assert!(html.contains("aria-label=\"Contents\""));
     }
 }

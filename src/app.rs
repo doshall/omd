@@ -519,8 +519,7 @@ impl OmdApp {
                 &self.content,
                 &title,
                 self.dark_mode,
-                self.editor_settings.show_toc,
-                self.editor_settings.enable_footnotes,
+                &self.editor_settings,
             );
             match std::fs::write(&path, html) {
                 Ok(()) => self.set_status(format!("Exported HTML to {}", path.display())),
@@ -534,8 +533,7 @@ impl OmdApp {
         let html = export::export_print_html_document(
             &self.content,
             &title,
-            self.editor_settings.show_toc,
-            self.editor_settings.enable_footnotes,
+            &self.editor_settings,
         );
         let temp_dir = std::env::temp_dir();
         let file_name = format!(

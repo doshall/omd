@@ -30,6 +30,7 @@ const STORAGE_PROJECT_OPEN: &str = "omd-web-project-sidebar";
 
 use settings::EditorSettings;
 use keybindings::{KeybindingMode, KeybindingState, VimMode};
+use omd_common::t;
 
 const DEFAULT_CONTENT: &str = include_str!("../../demo/default.md");
 
@@ -52,6 +53,9 @@ extern "C" {
 
     #[wasm_bindgen(js_namespace = window, js_name = omdPrintHtml)]
     fn omd_print_html(html: &str);
+
+    #[wasm_bindgen(js_namespace = window, js_name = omdRenderDiagrams)]
+    fn omd_render_diagrams();
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -332,6 +336,7 @@ fn App() -> impl IntoView {
         spawn_local(async move {
             gloo_timers::future::TimeoutFuture::new(50).await;
             omd_render_mermaid();
+            omd_render_diagrams();
             omd_render_math();
             omd_init_image_lightbox();
             if syntax {
@@ -1022,11 +1027,13 @@ fn App() -> impl IntoView {
     };
 
     view! {
-        <div id="app" class=move || if editor_settings.get().focus_mode { "focus-mode" } else { "" }>
+        <div id="app" class=move || if editor_settings.get().focus_mode { "focus-mode" } else { "" } role="application">
             {move || storage_loading.get().then(|| view! {
-                <div class="storage-loading">"正在加载文档…"</div>
+                <div class="storage-loading" role="status" aria-live="polite">
+                    {move || t(editor_settings.get().locale, "loading")}
+                </div>
             })}
-            <header class="header">
+            <header class="header" role="banner">
                 <h1><span>"omd"</span>" Web"</h1>
                 <div class="header-actions">
                     <button class="btn" on:click={
@@ -1045,7 +1052,7 @@ fn App() -> impl IntoView {
                             set_filename.set("document.md".to_string());
                             set_saved_snapshot.set(String::new());
                         }
-                    }>"新建"</button>
+                    }>{move || t(editor_settings.get().locale, "new")}</button>
                     <button class="btn" on:click={
                         let content = content.clone();
                         let saved_snapshot = saved_snapshot.clone();
@@ -1060,7 +1067,7 @@ fn App() -> impl IntoView {
                                 input.click();
                             }
                         }
-                    }>"打开"</button>
+                    }>{move || t(editor_settings.get().locale, "open")}</button>
                     <button class="btn" on:click={
                         let folder_input_ref = folder_input_ref.clone();
                         move |_| {
@@ -1068,8 +1075,10 @@ fn App() -> impl IntoView {
                                 input.click();
                             }
                         }
-                    }>"文件夹"</button>
-                    <button class="btn btn-icon" title="项目侧边栏"
+                    }>{move || t(editor_settings.get().locale, "folder")}</button>
+                    <button class="btn btn-icon"
+                        title=(move || t(editor_settings.get().locale, "project_sidebar").into_owned())
+                        aria-label=(move || t(editor_settings.get().locale, "project_sidebar").into_owned())
                         on:click=move |_| set_project_sidebar_open.update(|open| *open = !*open)
                     >"📁"</button>
                     <button class="btn btn-primary" on:click={
@@ -1087,7 +1096,7 @@ fn App() -> impl IntoView {
                             });
                             set_saved_snapshot.set(text);
                         }
-                    }>"下载"</button>
+                    }>{move || t(editor_settings.get().locale, "download")}</button>
                     <button class="btn" on:click={
                         let content = content.clone();
                         let filename = filename.clone();
@@ -1106,7 +1115,7 @@ fn App() -> impl IntoView {
                                 "text/html;charset=utf-8",
                             );
                         }
-                    }>"导出 HTML"</button>
+                    }>{move || t(editor_settings.get().locale, "export_html")}</button>
                     <button class="btn" on:click={
                         let content = content.clone();
                         let filename = filename.clone();
@@ -1119,10 +1128,14 @@ fn App() -> impl IntoView {
                             let html = export::export_print_html_document(&md, &title, &settings);
                             omd_print_html(&html);
                         }
-                    }>"导出 PDF"</button>
-                    <button class="btn btn-icon" title="设置"
+                    }>{move || t(editor_settings.get().locale, "export_pdf")}</button>
+                    <button class="btn btn-icon"
+                        title=(move || t(editor_settings.get().locale, "settings").into_owned())
+                        aria-label=(move || t(editor_settings.get().locale, "settings").into_owned())
                         on:click=move |_| set_settings_open.set(true)>"⚙"</button>
-                    <button class="btn btn-icon" title="切换主题"
+                    <button class="btn btn-icon"
+                        title=(move || t(editor_settings.get().locale, "dark_mode").into_owned())
+                        aria-label=(move || t(editor_settings.get().locale, "dark_mode").into_owned())
                         on:click=move |_| {
                             let next = !dark_mode.get();
                             set_dark_mode.set(next);
@@ -1521,11 +1534,35 @@ fn App() -> impl IntoView {
                 let set_settings_open = set_settings_open.clone();
                 view! {
                     <div class="settings-backdrop" on:click=move |_| set_settings_open.set(false)>
-                        <div class="settings-panel" on:click=move |ev: MouseEvent| { ev.stop_propagation(); }>
-                            <h2>"编辑器设置"</h2>
-                            <h3>"编辑区"</h3>
+                        <div class="settings-panel" role="dialog" aria-modal="true"
+                            aria-label=(move || t(editor_settings.get().locale, "settings_title").into_owned())
+                            on:click=move |ev: MouseEvent| { ev.stop_propagation(); }>
+                            <h2>{move || t(editor_settings.get().locale, "settings_title")}</h2>
+                            <h3>{move || t(editor_settings.get().locale, "section_appearance")}</h3>
                             <label class="settings-row">
-                                "显示行号"
+                                {move || t(editor_settings.get().locale, "locale")}
+                                <select
+                                    prop:value=move || match editor_settings.get().locale {
+                                        omd_common::Locale::Zh => "zh",
+                                        omd_common::Locale::En => "en",
+                                    }
+                                    on:change=move |ev| {
+                                        let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                        let locale = if el.value() == "en" {
+                                            omd_common::Locale::En
+                                        } else {
+                                            omd_common::Locale::Zh
+                                        };
+                                        set_editor_settings.update(|s| s.locale = locale);
+                                    }
+                                >
+                                    <option value="zh">{move || t(editor_settings.get().locale, "locale_zh")}</option>
+                                    <option value="en">{move || t(editor_settings.get().locale, "locale_en")}</option>
+                                </select>
+                            </label>
+                            <h3>{move || t(editor_settings.get().locale, "section_editor")}</h3>
+                            <label class="settings-row">
+                                {move || t(editor_settings.get().locale, "show_line_numbers")}
                                 <input type="checkbox" prop:checked=move || editor_settings.get().show_line_numbers
                                     on:change=move |ev| {
                                         let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
@@ -1534,7 +1571,7 @@ fn App() -> impl IntoView {
                                 />
                             </label>
                             <label class="settings-row">
-                                "高亮当前行"
+                                {move || t(editor_settings.get().locale, "highlight_current_line")}
                                 <input type="checkbox" prop:checked=move || editor_settings.get().highlight_current_line
                                     on:change=move |ev| {
                                         let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
@@ -1543,7 +1580,7 @@ fn App() -> impl IntoView {
                                 />
                             </label>
                             <label class="settings-row">
-                                "显示 Minimap"
+                                {move || t(editor_settings.get().locale, "show_minimap")}
                                 <input type="checkbox" prop:checked=move || editor_settings.get().show_minimap
                                     on:change=move |ev| {
                                         let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
@@ -1552,7 +1589,7 @@ fn App() -> impl IntoView {
                                 />
                             </label>
                             <label class="settings-row">
-                                "字号"
+                                {move || t(editor_settings.get().locale, "font_size")}
                                 <input type="range" min="10" max="24" step="1"
                                     prop:value=move || editor_settings.get().editor_font_size.to_string()
                                     on:input=move |ev| {
@@ -1564,7 +1601,7 @@ fn App() -> impl IntoView {
                                 />
                             </label>
                             <label class="settings-row">
-                                "行高"
+                                {move || t(editor_settings.get().locale, "line_height")}
                                 <input type="range" min="12" max="22" step="1"
                                     prop:value=move || (editor_settings.get().editor_line_height * 10.0).round().to_string()
                                     on:input=move |ev| {
@@ -1576,7 +1613,7 @@ fn App() -> impl IntoView {
                                 />
                             </label>
                             <label class="settings-row">
-                                "编辑区语法高亮"
+                                {move || t(editor_settings.get().locale, "editor_syntax_highlight")}
                                 <input type="checkbox" prop:checked=move || editor_settings.get().editor_syntax_highlight
                                     on:change=move |ev| {
                                         let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
@@ -1584,9 +1621,9 @@ fn App() -> impl IntoView {
                                     }
                                 />
                             </label>
-                            <h3>"预览"</h3>
+                            <h3>{move || t(editor_settings.get().locale, "section_preview")}</h3>
                             <label class="settings-row">
-                                "同步滚动"
+                                {move || t(editor_settings.get().locale, "sync_scroll")}
                                 <input type="checkbox" prop:checked=move || editor_settings.get().sync_scroll
                                     on:change=move |ev| {
                                         let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
@@ -1595,7 +1632,7 @@ fn App() -> impl IntoView {
                                 />
                             </label>
                             <label class="settings-row">
-                                "代码块语法高亮"
+                                {move || t(editor_settings.get().locale, "preview_syntax_highlight")}
                                 <input type="checkbox" prop:checked=move || editor_settings.get().preview_syntax_highlight
                                     on:change=move |ev| {
                                         let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
@@ -1604,7 +1641,7 @@ fn App() -> impl IntoView {
                                 />
                             </label>
                             <label class="settings-row">
-                                "预览字号"
+                                {move || t(editor_settings.get().locale, "preview_font_size")}
                                 <input type="range" min="12" max="22" step="1"
                                     prop:value=move || editor_settings.get().preview_font_size.to_string()
                                     on:input=move |ev| {
@@ -1616,7 +1653,7 @@ fn App() -> impl IntoView {
                                 />
                             </label>
                             <label class="settings-row">
-                                "显示目录（TOC）"
+                                {move || t(editor_settings.get().locale, "show_toc")}
                                 <input type="checkbox" prop:checked=move || editor_settings.get().show_toc
                                     on:change=move |ev| {
                                         let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
@@ -1625,7 +1662,7 @@ fn App() -> impl IntoView {
                                 />
                             </label>
                             <label class="settings-row">
-                                "启用脚注"
+                                {move || t(editor_settings.get().locale, "enable_footnotes")}
                                 <input type="checkbox" prop:checked=move || editor_settings.get().enable_footnotes
                                     on:change=move |ev| {
                                         let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
@@ -1633,9 +1670,22 @@ fn App() -> impl IntoView {
                                     }
                                 />
                             </label>
-                            <h3>"图片"</h3>
+                            <label class="settings-row settings-row-block">
+                                {move || t(editor_settings.get().locale, "custom_preview_css")}
+                                <textarea
+                                    class="settings-textarea"
+                                    rows="4"
+                                    prop:value=move || editor_settings.get().custom_preview_css.clone()
+                                    on:input=move |ev| {
+                                        let el: HtmlTextAreaElement = ev.target().unwrap().unchecked_into();
+                                        set_editor_settings.update(|s| s.custom_preview_css = el.value());
+                                    }
+                                ></textarea>
+                            </label>
+                            <p class="settings-hint">{move || t(editor_settings.get().locale, "custom_preview_css_hint")}</p>
+                            <h3>{move || t(editor_settings.get().locale, "section_images")}</h3>
                             <label class="settings-row">
-                                "粘贴/上传时压缩图片"
+                                {move || t(editor_settings.get().locale, "compress_images")}
                                 <input type="checkbox" prop:checked=move || editor_settings.get().compress_images
                                     on:change=move |ev| {
                                         let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
@@ -1644,7 +1694,7 @@ fn App() -> impl IntoView {
                                 />
                             </label>
                             <label class="settings-row">
-                                "最大宽度（px）"
+                                {move || t(editor_settings.get().locale, "max_image_width")}
                                 <input type="range" min="320" max="4096" step="1"
                                     prop:value=move || editor_settings.get().max_image_width.to_string()
                                     prop:disabled=move || !editor_settings.get().compress_images
@@ -1658,7 +1708,7 @@ fn App() -> impl IntoView {
                                 <span>{move || editor_settings.get().max_image_width}</span>
                             </label>
                             <label class="settings-row">
-                                "JPEG 质量"
+                                {move || t(editor_settings.get().locale, "image_quality")}
                                 <input type="range" min="40" max="100" step="1"
                                     prop:value=move || editor_settings.get().image_quality.to_string()
                                     prop:disabled=move || !editor_settings.get().compress_images
@@ -1671,9 +1721,19 @@ fn App() -> impl IntoView {
                                 />
                                 <span>{move || editor_settings.get().image_quality}</span>
                             </label>
-                            <h3>"专注与提示"</h3>
+                            <h3>{move || t(editor_settings.get().locale, "section_accessibility")}</h3>
                             <label class="settings-row">
-                                "专注模式"
+                                {move || t(editor_settings.get().locale, "spell_check")}
+                                <input type="checkbox" prop:checked=move || editor_settings.get().spell_check
+                                    on:change=move |ev| {
+                                        let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                        set_editor_settings.update(|s| s.spell_check = el.checked());
+                                    }
+                                />
+                            </label>
+                            <h3>{move || t(editor_settings.get().locale, "section_focus")}</h3>
+                            <label class="settings-row">
+                                {move || t(editor_settings.get().locale, "focus_mode")}
                                 <input type="checkbox" prop:checked=move || editor_settings.get().focus_mode
                                     on:change=move |ev| {
                                         let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
@@ -1681,9 +1741,9 @@ fn App() -> impl IntoView {
                                     }
                                 />
                             </label>
-                            <p class="settings-hint">"快捷键：F11 切换，Esc 退出"</p>
+                            <p class="settings-hint">{move || t(editor_settings.get().locale, "focus_mode_hint")}</p>
                             <label class="settings-row">
-                                "撤销/重做提示"
+                                {move || t(editor_settings.get().locale, "undo_redo_hint")}
                                 <input type="checkbox" prop:checked=move || editor_settings.get().show_undo_redo_hint
                                     on:change=move |ev| {
                                         let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
@@ -1692,7 +1752,7 @@ fn App() -> impl IntoView {
                                 />
                             </label>
                             <label class="settings-row">
-                                "键位模式"
+                                {move || t(editor_settings.get().locale, "keybinding_mode")}
                                 <select
                                     prop:value=move || match editor_settings.get().keybinding_mode {
                                         KeybindingMode::Standard => "standard",
@@ -1710,7 +1770,7 @@ fn App() -> impl IntoView {
                                         set_keybinding_state.update(|state| keybindings::reset_for_mode(state, mode));
                                     }
                                 >
-                                    <option value="standard">"标准"</option>
+                                    <option value="standard">{move || t(editor_settings.get().locale, "keybinding_standard")}</option>
                                     <option value="vim">"Vim"</option>
                                     <option value="emacs">"Emacs"</option>
                                 </select>
@@ -1718,7 +1778,7 @@ fn App() -> impl IntoView {
                             {move || (editor_settings.get().keybinding_mode == KeybindingMode::Vim).then(|| view! {
                                 <>
                                     <label class="settings-row">
-                                        "Visual Block 高亮"
+                                        {move || t(editor_settings.get().locale, "vim_block_highlight")}
                                         <input type="checkbox" prop:checked=move || editor_settings.get().vim_show_block_highlight
                                             on:change=move |ev| {
                                                 let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
@@ -1727,7 +1787,7 @@ fn App() -> impl IntoView {
                                         />
                                     </label>
                                     <label class="settings-row">
-                                        "系统剪贴板寄存器 (+/*)"
+                                        {move || t(editor_settings.get().locale, "vim_system_clipboard")}
                                         <input type="checkbox" prop:checked=move || editor_settings.get().vim_use_system_clipboard
                                             on:change=move |ev| {
                                                 let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
@@ -1740,7 +1800,9 @@ fn App() -> impl IntoView {
                             <p class="settings-hint">"Vim: Ctrl+V · I/A/C 块编辑 · :g/pat/s/o/n/g · :g/pat/norm · Emacs: C-Space mark · C-s 搜索 · C-o/C-j/C-t · M-w"</p>
                             <div class="settings-actions">
                                 <button class="btn btn-primary" type="button"
-                                    on:click=move |_| set_settings_open.set(false)>"完成"</button>
+                                    on:click=move |_| set_settings_open.set(false)>
+                                    {move || t(editor_settings.get().locale, "done")}
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -1840,7 +1902,7 @@ fn App() -> impl IntoView {
 
             <div class=move || format!("main {}", view_mode.get().css_class())>
                 <div class="pane editor-pane">
-                    <div class="pane-header">"编辑"</div>
+                    <div class="pane-header">{move || t(editor_settings.get().locale, "editor")}</div>
                     <div class="editor-with-minimap">
                         <div class="editor-with-gutter">
                             {move || editor_settings.get().show_line_numbers.then(|| view! {
@@ -1978,8 +2040,9 @@ fn App() -> impl IntoView {
                                     on:paste=on_paste
                                     on:drop=on_drop
                                     on:dragover=on_drag_over
-                                    placeholder="在此输入 Markdown，可粘贴或拖入图片..."
-                                    spellcheck="false"
+                                    placeholder=(move || t(editor_settings.get().locale, "editor_placeholder").into_owned())
+                                    spellcheck=(move || editor_settings.get().spell_check)
+                                    aria-label=(move || t(editor_settings.get().locale, "editor").into_owned())
                                 ></textarea>
                             </div>
                         </div>
@@ -1996,14 +2059,16 @@ fn App() -> impl IntoView {
                     </div>
                 </div>
                 <div class="divider"></div>
-                <div class="pane preview-pane">
-                    <div class="pane-header">"预览"</div>
+                <div class="pane preview-pane" role="region"
+                    aria-label=(move || t(editor_settings.get().locale, "preview").into_owned())>
+                    <div class="pane-header">{move || t(editor_settings.get().locale, "preview")}</div>
                     <div
                         class="preview-content"
                         node_ref=preview_ref
                         on:scroll=on_preview_scroll
                         on:change=on_preview_task_change
                         inner_html=preview_html
+                        aria-live="polite"
                     ></div>
                 </div>
             </div>
