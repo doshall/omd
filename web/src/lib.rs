@@ -388,10 +388,9 @@ fn App() -> impl IntoView {
         });
     });
 
-    // Render mermaid diagrams after preview updates
+    // Render mermaid/math after preview content updates (theme handled by omdApplyTheme).
     Effect::new(move |_| {
         let _ = content.get();
-        let _ = dark_mode.get();
         let syntax = editor_settings.get().preview_syntax_highlight;
         spawn_local(async move {
             gloo_timers::future::TimeoutFuture::new(50).await;

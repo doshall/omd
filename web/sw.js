@@ -1,4 +1,4 @@
-const CACHE_NAME = 'omd-web-v3';
+const CACHE_NAME = 'omd-web-v4';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
