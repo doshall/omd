@@ -9,7 +9,7 @@ omd 是一款用 Rust 编写的轻量级 Markdown 编辑器，提供**桌面版*
 | 运行环境 | 本地电脑（Windows/macOS/Linux） | 任意现代浏览器 | Android 8.0+ 手机/平板 |
 | 安装 | 需编译或下载二进制 | 无需安装，打开即用 | 安装 APK |
 | 文件管理 | 原生文件对话框，直接读写磁盘 | 导入/下载 `.md` 文件 | 系统文件关联打开 `.md` |
-| 自动保存 | ✅ 可配置写入磁盘 | 自动保存到浏览器 | 自动保存到 localStorage |
+| 自动保存 | ✅ 可配置写入磁盘 | localStorage + IndexedDB | localStorage + IndexedDB |
 | 导出 HTML | ✅ | ✅ | — |
 | 在线使用 | — | [omd Web](https://doshall.github.io/omd/) | — |
 | Mermaid 图表 | ✅ | ✅ | ✅ |
@@ -100,7 +100,7 @@ omd 是一款用 Rust 编写的轻量级 Markdown 编辑器，提供**桌面版*
 | 打开 | 打开 | 从本地选择 `.md` 文件导入 |
 | 下载 | 下载 | 将当前内容保存为 `.md` 文件 |
 
-Web 版会**自动保存**编辑内容到浏览器 localStorage，刷新页面后自动恢复。
+Web 版会**自动保存**编辑内容到浏览器（localStorage / IndexedDB），刷新页面后自动恢复。支持**多标签页**与**最近文件**栏（点击可重新打开已打开过的文档）。
 
 ### Android 版
 

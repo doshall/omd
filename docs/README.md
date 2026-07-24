@@ -109,5 +109,6 @@ docs/
 | **eframe** | egui 的应用框架，提供窗口和持久化 |
 | **pulldown-cmark** | Rust Markdown 解析库 |
 | **Mermaid** | 图表描述语言，Web 版支持渲染 |
-| **localStorage** | 浏览器本地存储，Web 版用于自动保存 |
+| **localStorage** | 浏览器本地存储，Web 版用于设置、主题与标签元数据 |
+| **IndexedDB** | 浏览器大容量存储，Web 版用于大文档与最近文件正文 |
 | **WASM** | WebAssembly，Web 版的运行格式 |
