@@ -329,12 +329,13 @@ dist/
 
 ## 已知限制
 
-- 无多标签页
-- 代码块无语法高亮
-- 不支持 LaTeX 数学公式
-- localStorage 有容量限制
-- 需要网络加载 Mermaid.js CDN（可改为本地托管）
-- 预览区任务列表不可点击切换
+- PlantUML 预览需访问 plantuml.com（三端导出 HTML 亦同）
+- 桌面 Graphviz 代码块仅显示源码（Web/Android 可渲染 SVG）
+- Linux 全局快捷键在 Wayland 下可能不可用
+- PlantUML / 部分 CDN 资源需网络（离线 APK 已打包 Mermaid、KaTeX、viz.js、pako）
+- localStorage 有容量上限（大文档自动使用 IndexedDB）
+
+完整对比见 [三端功能对比](comparison.md)。
 
 ## 故障排除
 

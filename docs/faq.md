@@ -4,43 +4,35 @@
 
 ### omd 是什么？
 
-omd 是一款用 Rust 编写的轻量级 Markdown 编辑器，提供**桌面版**、**Web 版**和 **Android 版**。
+omd 是一款用 Rust 编写的轻量级 Markdown 编辑器，提供**桌面版**、**Web 版**和 **Android 版**（当前 **v0.9.x**）。
 
-### 桌面版和 Web 版有什么区别？
+### 三端怎么选？
 
 | | 桌面版 | Web 版 | Android 版 |
 |---|--------|--------|------------|
 | 运行方式 | 本地应用 | 浏览器 | 原生 APK |
 | 文件管理 | 直接读写磁盘 | 导入/下载 | 文件关联打开 |
-| Mermaid | ✅ | ✅ | ✅ |
-| 图片粘贴 | ✅ | ✅ | ✅ |
-| 自动保存 | ✅ 磁盘（可配置） | 自动（localStorage） | 自动（localStorage） |
-| 导出 HTML | ✅ | ✅ | — |
-| 在线演示 | — | https://doshall.github.io/omd/ | — |
+| 离线 | ✅ | ✅ PWA/自托管 | ✅ |
+| 导出 HTML | ✅ | ✅ | ✅ |
 | 手机使用 | ❌ | ✅ 响应式 | ✅ |
 
-详见 [用户指南](user-guide.md#版本选择)。
+详见 [三端功能对比](comparison.md) 与 [发布说明](release-notes.md)。
 
 ### 支持哪些操作系统？
 
 - **桌面版**：Linux、macOS、Windows（需图形环境）
-- **Web 版**：任何有现代浏览器的设备
+- **Web 版**：Chrome 57+、Firefox 52+、Safari 11+ 等支持 WASM 的浏览器
+- **Android 版**：Android 8.0+（API 26+）
 
 ### 免费吗？
 
-是的，omd 以 MIT 许可证开源，免费使用和修改。
+是的，MIT 许可证开源。
 
-### 还有哪些功能可以加？当前优先做什么？
+### 从哪里下载？
 
-核心编辑能力已比较完整，没有「必须马上加」的功能。完整扩展清单与实现顺序见 [路线图](roadmap.md)。
-
-**当前优先方向：A 类 — 编辑体验**，推荐顺序：
-
-1. 查找 / 替换
-2. 预览区代码块语法高亮
-3. 行号与当前行高亮
-4. **滚动条 Minimap**（文档缩略导航）
-5. 编辑区与预览区同步滚动
+- **桌面 / Web 包 / APK**：[GitHub Releases](https://github.com/doshall/omd/releases)
+- **Web 在线**：<https://doshall.github.io/omd/>
+- **自行构建**：见 [用户指南](user-guide.md) 与 [Android 版指南](android.md)
 
 ---
 
@@ -48,39 +40,35 @@ omd 是一款用 Rust 编写的轻量级 Markdown 编辑器，提供**桌面版*
 
 ### 启动报错：`Library libxkbcommon-x11.so could not be loaded`
 
-Linux 缺少 X11 键盘库：
-
 ```bash
 sudo apt install libxkbcommon-x11-0
 ```
 
-### 在远程服务器上运行看不到窗口？
+### Linux 编译报错缺少 `glib-2.0` / GTK？
 
-桌面版是原生 GUI 应用，窗口显示在运行它的机器上。通过 SSH 连接远程服务器时无法看到界面。
-
-解决方案：
-- 在本地电脑运行桌面版
-- 使用 Web 版（`cd web && trunk serve`）
-- 使用 X11 转发（`ssh -X`，体验较差）
-
-### 图片无法显示？
-
-1. 检查路径是否正确（相对路径基于当前文件所在目录）
-2. 网络图片确认 URL 可访问
-3. 确认图片格式受支持（PNG、JPG、GIF、WebP、SVG、BMP）
-
-### 如何打开特定文件？
+v0.8.1 起桌面版含系统托盘，需要开发库：
 
 ```bash
-# 未来版本可能支持
-omd /path/to/file.md
-
-# 当前：启动后 File → Open
+sudo apt install libgtk-3-dev libayatana-appindicator3-dev libxdo-dev
 ```
+
+### 全局快捷键无效？
+
+Linux 上仅 **X11** 会话可靠；Wayland 下系统可能拦截全局热键。可在设置中关闭「全局快捷键」。
+
+### 如何用命令行打开文件？
+
+```bash
+omd /path/to/file.md
+```
+
+### PlantUML 不显示？
+
+桌面预览通过 **plantuml.com** 加载 SVG，需要网络。离线时请导出 HTML 或在 Web/Android 端预览。
 
 ### 关闭时未保存的内容会丢失吗？
 
-eframe persistence 会保存编辑区内容。但建议养成 `Ctrl+S` 保存习惯。
+已保存到磁盘的文件：可配置自动保存。未保存路径的新文档：关闭前会提示；eframe 也会持久化部分会话状态，但仍建议 `Ctrl+S`。
 
 ---
 
@@ -88,70 +76,78 @@ eframe persistence 会保存编辑区内容。但建议养成 `Ctrl+S` 保存习
 
 ### 页面空白或 WASM 加载失败？
 
-1. 确认浏览器支持 WebAssembly（Chrome 57+、Firefox 52+、Safari 11+）
-2. **强制刷新**：`Ctrl+Shift+R`（Mac：`Cmd+Shift+R`）
-3. 若曾安装 PWA 或访问过 GitHub Pages：开发者工具 → **Application** → **Service Workers** → **Unregister**，然后刷新
-4. 本地 `trunk serve` 在 localhost 不注册 SW；若仍空白，清除该站点的 Local Storage 与 IndexedDB
-5. 检查控制台错误信息
-6. 重新构建：`bash scripts/fetch-web-assets.sh && cd web && trunk build --release`
-7. 确认服务器正确设置 WASM MIME 类型
+1. **强制刷新**：`Ctrl+Shift+R`（Mac：`Cmd+Shift+R`）
+2. 注销旧 **Service Worker**：开发者工具 → Application → Service Workers → Unregister
+3. 清除该站 localStorage / IndexedDB 后重试
+4. 本地开发：`bash scripts/fetch-web-assets.sh && bash scripts/trunk-build.sh`
+5. 确认服务器对 `.wasm` 返回 `application/wasm`
 
 ### 刷新后内容还在吗？
 
-是的，Web 版自动保存到 localStorage / IndexedDB。除非：
+是。小文档在 localStorage，大文档自动迁移到 IndexedDB。隐私模式或清空站点数据会丢失。
 
-- 使用了浏览器隐私/无痕模式
-- 手动清除了浏览器数据
-- 存储配额已满（大文档会自动尝试 IndexedDB）
+### Mermaid / PlantUML / Graphviz 不显示？
 
-### 如何清除自动保存的内容？
+1. 代码块语言分别为 `mermaid`、`plantuml`、`graphviz` 或 `dot`
+2. PlantUML 需访问 **plantuml.com**；离线环境仅 Mermaid / Graphviz（viz.js 已打包）可靠
+3. 查看浏览器控制台错误
 
-- 点击「新建」清空
-- 或浏览器设置 → 清除网站数据
+### CI 构建报 wasm-opt 504？
 
-### Mermaid 图表不显示？
+GitHub 下载 `binaryen` 偶发 504。项目已提供 `scripts/trunk-build.sh`（重试后回退为无 wasm-opt 构建）。本地与 CI 均应使用该脚本。
 
-1. 确认代码块语言为 `mermaid`（不是 ` ``` ` 无语言标记）
-2. 检查网络能否访问 `cdn.jsdelivr.net`
-3. 查看浏览器控制台 Mermaid 错误
-4. 确认 Mermaid 语法正确
+### 如何切换英文界面？
 
-### 手机上怎么用？
+**⚙ 设置** → **界面语言** → English。
 
-**方式一：局域网访问**
+### 如何自定义预览样式？
 
-```bash
-cd web && trunk serve
-# 手机浏览器访问 http://<电脑IP>:8080
-```
+**⚙ 设置** → **自定义预览 CSS**，规则同时作用于预览区与导出 HTML。
 
-**方式二：在线演示或公网部署**
+---
 
-直接访问 https://doshall.github.io/omd/ ，或自行部署 `web/dist/` 到静态托管。
+## Android 版
 
-**方式三：手机 Cursor 浏览器**
+### 为什么没有出现在 GitHub Release？
 
-Cloud Agent 远程运行无法显示 GUI，需本地运行或部署到公网。
+v0.9.0 之前 Release 工作流**未包含** Android job；自 **v0.9.1** 起打 tag 会自动附带 `omd-android-vX.Y.Z.apk`。若某次 Release 失败，见 [发布说明 — 补发](release-notes.md#补发失败的-release)。
 
-### 上传的图片太大怎么办？
-
-Base64 嵌入会显著增大文档体积。建议：
-- 小图标/截图：Base64 可接受
-- 大图片：使用 URL 引用（🌐 按钮）
-- 定期下载备份 `.md` 文件
-
-### `trunk` 命令报错？
+### 如何本地打包？
 
 ```bash
-# NO_COLOR 环境变量冲突
-env -u NO_COLOR trunk serve
-
-# 未安装 trunk
-cargo install trunk --locked
-
-# 未安装 WASM 目标
-rustup target add wasm32-unknown-unknown
+export ANDROID_HOME=/path/to/android-sdk
+echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+./scripts/build-android.sh
 ```
+
+### 与 Web 版功能一致吗？
+
+Android 复用同一 WASM  bundle，功能与 Web 版基本一致（含多标签、侧边栏、导出 HTML 等）。
+
+---
+
+## 导出与格式
+
+### 支持导出 HTML 吗？
+
+三端均支持。桌面：**File → Export HTML**；Web/Android：顶部 **导出 HTML**。
+
+### 支持导出 PDF 吗？
+
+通过 **导出 PDF** 打开打印优化 HTML，在浏览器中选择「另存为 PDF」。
+
+### 支持多标签页吗？
+
+三端均支持多标签编辑。
+
+---
+
+## 数据与安全
+
+- **桌面**：文件在本地磁盘，不上传
+- **Web / Android**：内容存于浏览器 localStorage / IndexedDB
+
+详见 [安全说明](security.md)。
 
 ---
 
@@ -159,80 +155,18 @@ rustup target add wasm32-unknown-unknown
 
 ### 需要什么 Rust 版本？
 
-1.85+（stable）。项目包含 `rust-toolchain.toml` 自动管理。
+1.85+（stable），见 `rust-toolchain.toml`。
 
-### 如何贡献代码？
+### 如何贡献？
 
-参见 [贡献指南](../CONTRIBUTING.md) 和 [开发指南](development.md)。
-
-### 两个版本的 Markdown 渲染器为什么不共享？
-
-渲染目标不同：
-- 桌面版输出 egui 原生控件
-- Web 版输出 HTML 字符串
-
-未来可考虑抽取共享的解析逻辑，但渲染层需保持独立。
-
-### 如何添加新的 Markdown 语法支持？
-
-1. 确认 pulldown-cmark 是否支持该语法
-2. 桌面版：在 `src/markdown.rs` 的 `PreviewState::handle_event()` 中添加处理
-3. Web 版：pulldown-cmark HTML 输出通常自动支持；特殊处理在 `web/src/markdown.rs` 中添加
+[贡献指南](../CONTRIBUTING.md)、[开发指南](development.md)。
 
 ---
-
-## 其他
-
-### 支持导出 HTML 吗？
-
-支持。桌面版：**File → Export HTML…** 或工具栏 **📤**；Web 版：顶部 **导出 HTML**。生成独立 HTML 文件，含 Mermaid 与代码高亮。
-
-### 支持导出 PDF 吗？
-
-暂不支持。可通过浏览器打印功能（Web 版）或第三方工具转换。
-
-### 支持多标签页吗？
-
-暂不支持。一次编辑一个文档。
-
-### 数据安全吗？
-
-- **桌面版**：文件存储在本地磁盘，不上传任何数据
-- **Web 版**：内容保存在浏览器 localStorage，不发送到服务器
-
-详见 [安全说明](security.md)。
-
-### 桌面版和 Web 版怎么选？
-
-参见 [版本功能对比](comparison.md)。
-
-### 如何配置主题颜色？
-
-- **桌面版**：使用 egui 内置深色/浅色方案，暂不支持自定义
-- **Web 版**：修改 `web/style.css` 中的 CSS 变量，参见 [配置参考](configuration.md)
-
-### localStorage / IndexedDB 存了哪些数据？
-
-详见 [配置参考 — localStorage 与 IndexedDB](configuration.md#localstorage-与-indexeddb)。摘要：
-
-- **localStorage**：设置、主题、视图、标签元数据、最近文件列表
-- **IndexedDB**（`omd-web`）：大文档各标签正文、最近文件正文
-
-### 如何离线使用 Web 版？
-
-1. `cd web && trunk build --release`
-2. 将 `dist/` 部署到本地服务器或直接用浏览器打开
-3. Mermaid 需本地化 CDN，参见 [部署指南](deployment.md)
-
-### 在哪里报告问题？
-
-[GitHub Issues](https://github.com/doshall/omd/issues)
 
 ## 相关文档
 
 - [用户指南](user-guide.md)
-- [安全说明](security.md)
-- [版本功能对比](comparison.md)
+- [三端功能对比](comparison.md)
+- [发布说明](release-notes.md)
 - [配置参考](configuration.md)
 - [路线图](roadmap.md)
-- [开发指南](development.md)

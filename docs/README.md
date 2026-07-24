@@ -28,7 +28,7 @@
 ### 我想了解后续规划
 
 1. [路线图](roadmap.md) — 完整功能清单、编辑体验优先顺序、滚动条 Minimap
-2. [版本功能对比](comparison.md) — 三版本现状
+2. [版本功能对比](comparison.md) — 桌面 / Web / Android 三端
 
 ### 我想参与开发
 
@@ -40,7 +40,8 @@
 
 ### 我想选型对比
 
-- [版本功能对比](comparison.md) — 桌面版 vs Web 版完整矩阵
+- [版本功能对比](comparison.md) — 桌面 / Web / Android 完整矩阵
+- [发布说明](release-notes.md) — Release 产物与补发指南
 
 ## 文档索引
 
@@ -53,7 +54,8 @@
 | [Web 版指南](web.md) | 浏览器运行、自动保存、Mermaid、移动端 |
 | [Android 版指南](android.md) | APK 构建、安装、离线使用 |
 | [Markdown 语法支持](markdown-syntax.md) | 支持的语法、GFM 扩展、Mermaid |
-| [版本功能对比](comparison.md) | 桌面版与 Web 版功能矩阵 |
+| [版本功能对比](comparison.md) | 桌面 / Web / Android 功能矩阵 |
+| [发布说明](release-notes.md) | GitHub Release 产物与版本摘要 |
 | [常见问题](faq.md) | FAQ 与故障排除 |
 
 ### 开发者文档
@@ -87,7 +89,8 @@ docs/
 ├── desktop.md             桌面版
 ├── android.md             Android APK
 ├── markdown-syntax.md     语法参考
-├── comparison.md          版本对比
+├── comparison.md          三端功能对比
+├── release-notes.md       发布说明
 ├── faq.md                 常见问题
 ├── architecture.md        架构设计
 ├── development.md         开发指南

@@ -238,9 +238,16 @@ cargo build --release
 
 ### GitHub Releases
 
-推送 `v*` tag 时自动构建三平台桌面二进制与 Web 压缩包并创建 Release。
+推送 `v*` tag 时自动构建三平台桌面二进制、Web 压缩包与 **Android APK**（`omd-android-vX.Y.Z.apk`），并创建 GitHub Release。详见 [发布说明](release-notes.md)。
 
-**补发失败的历史 Release**（如 `v0.2.0` 因缺少 `mermaid.min.js` 构建失败）：
+**Web 构建**（本地与 CI 统一）：
+
+```bash
+bash scripts/fetch-web-assets.sh   # 离线 JS/CSS（含重试）
+bash scripts/trunk-build.sh        # Trunk release；wasm-opt 504 时自动重试/回退
+```
+
+**补发失败的历史 Release**（如 wasm-opt 504、Linux 缺少 GTK 依赖）：
 
 1. 打开 [Actions → Release](https://github.com/doshall/omd/actions/workflows/release.yml)
 2. 点击 **Run workflow**

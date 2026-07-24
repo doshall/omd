@@ -1,6 +1,6 @@
 # omd
 
-**omd** 是一款使用 Rust 编写的轻量级 Markdown 编辑器，提供**桌面版**、**Web 版**和 **Android 版**（当前版本 **v0.6.0**）。
+**omd** 是一款使用 Rust 编写的轻量级 Markdown 编辑器，提供**桌面版**、**Web 版**和 **Android 版**（当前版本 **v0.9.1**）。
 
 **在线体验**：https://doshall.github.io/omd/
 
@@ -16,7 +16,9 @@
 - Vim / Emacs 可选键位模式
 - 图片插入（URL、本地文件、粘贴、拖拽）
 - 脚注 / TOC、YAML Front Matter、LaTeX（KaTeX）、导出 HTML / PDF
-- 多标签页、最近文件、图片点击放大
+- PlantUML / Graphviz 图表、自定义预览 CSS
+- 多语言界面（中/英）、Web 拼写检查与无障碍（ARIA）
+- 多标签页、最近文件、项目文件夹侧边栏、图片点击放大
 - 桌面版：文件管理、自动保存、关闭前确认
 - Web 版：PWA 可安装、localStorage + IndexedDB 自动保存
 
@@ -31,7 +33,8 @@
 | **图片粘贴** | ✅ | ✅ | ✅ |
 | **离线** | ✅ | ✅ PWA | ✅ |
 | **自动保存** | ✅ 磁盘（可配置） | localStorage + IndexedDB | localStorage + IndexedDB |
-| **导出 HTML** | ✅ | ✅ | — |
+| **导出 HTML** | ✅ | ✅ | ✅ |
+| **Release APK** | — | — | ✅ GitHub Releases |
 
 ## 快速开始
 
@@ -81,7 +84,7 @@ echo "sdk.dir=$ANDROID_HOME" > android/local.properties
 | **参考** | [Markdown 语法](docs/markdown-syntax.md) · [版本对比](docs/comparison.md) · [配置](docs/configuration.md) |
 | **开发** | [架构](docs/architecture.md) · [开发指南](docs/development.md) · [API](docs/api-reference.md) |
 | **运维** | [部署指南](docs/deployment.md) · [安全说明](docs/security.md) |
-| **其他** | [FAQ](docs/faq.md) · [路线图](docs/roadmap.md) · [贡献指南](CONTRIBUTING.md) · [CHANGELOG](CHANGELOG.md) |
+| **其他** | [FAQ](docs/faq.md) · [发布说明](docs/release-notes.md) · [路线图](docs/roadmap.md) · [贡献指南](CONTRIBUTING.md) · [CHANGELOG](CHANGELOG.md) |
 
 ## 项目结构
 

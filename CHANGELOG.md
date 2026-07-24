@@ -4,11 +4,14 @@
 
 ## [未发布]
 
+## [0.9.1] - 2026-07-24
+
 ### 变更
 
-- **Release CI**：打 tag 时自动构建并上传 Android APK（`omd-android-vX.Y.Z.apk`）
-- `scripts/build-android.sh` 使用 `fetch-web-assets.sh` 拉取全部离线资源
-- Android `versionName` 升至 **0.9.0**（`versionCode` 4）
+- **文档**：补全用户指南、FAQ、三端功能对比表与 [发布说明](docs/release-notes.md)
+- **CI / Release**：`scripts/trunk-build.sh`（wasm-opt 504 重试 + 无优化回退）、`scripts/curl-retry.sh`；Release Linux 桌面构建安装 GTK 依赖
+- **Android**：`versionName` **0.9.1**；Release 工作流构建 APK
+- 版本号升至 **0.9.1**
 
 ## [0.9.0] - 2026-07-24
 
