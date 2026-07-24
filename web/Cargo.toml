@@ -1,6 +1,6 @@
 [package]
 name = "omd-web"
-version = "0.9.1"
+version = "0.9.2"
 edition = "2021"
 description = "Browser version of omd markdown editor"
 license = "MIT"

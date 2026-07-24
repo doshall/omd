@@ -44,11 +44,11 @@
 
 ### 补发失败的 Release
 
-若某次 Release 因 CI 失败未生成附件（例如 wasm-opt 504、Linux 缺少 GTK 依赖）：
+若某次 Release 因 CI 失败未生成附件（例如 wasm-opt 504、Linux 缺少 GTK 依赖、macOS/Windows 误拉 `gtk`）：
 
-1. 在 main 修复 CI 后合并
+1. 在 main 修复 CI 后合并（v0.9.2 起已修复跨平台 `desktop-shell` 依赖）
 2. Actions → **Release** → **Run workflow**
-3. 输入已有 tag（如 `v0.9.0`）重新构建
+3. 输入已有 tag（如 `v0.9.0` 或 `v0.9.1`）重新构建
 
 ## 历史版本摘要
 

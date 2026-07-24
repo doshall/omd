@@ -4,6 +4,17 @@
 
 ## [未发布]
 
+## [0.9.2] - 2026-07-24
+
+### 修复
+
+- **Release 构建**：`gtk` 仅作为 Linux 目标依赖；修复 macOS / Windows 桌面 Release 因 `glib-sys` / `pkg-config` 失败的问题
+- **Android**：`versionCode` 6、`versionName` **0.9.2**
+
+### 变更
+
+- 版本号升至 **0.9.2**
+
 ## [0.9.1] - 2026-07-24
 
 ### 变更
