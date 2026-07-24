@@ -4,10 +4,6 @@
 
 ## [未发布]
 
-### 修复
-
-- **Web Mermaid 深色主题**：切换主题时用 `mermaid.render()` 从 `data-mermaid-source` 重绘，避免 `mermaid.run()` 对 SVG 二次解析；主题切换不再重复触发 Effect
-
 ## [0.4.0] - 2026-07-24
 
 ### 新增 — 文档与格式
@@ -16,10 +12,15 @@
 - **导出 PDF**（桌面 / Web / Android）：生成打印优化 HTML，浏览器「打印 → 另存为 PDF」
 - **Web 多标签页**：标签栏新建 / 切换 / 关闭，`localStorage` 持久化（最多 20 个标签）
 
+### 修复
+
+- **Web Mermaid 主题切换**：切换浅色/深色时用 `mermaid.render()` 从 `data-mermaid-source` 重绘，避免甘特图等图表出现 `Syntax error in text`
+
 ### 变更
 
 - `scripts/fetch-web-assets.sh` 增加 KaTeX 离线资源
 - 版本号升至 **0.4.0**
+- Service Worker 缓存版本升至 `v4`
 
 ## [0.3.1] - 2026-07-24
 
