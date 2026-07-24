@@ -4,6 +4,12 @@
 
 ## [未发布]
 
+### 变更
+
+- **Release CI**：打 tag 时自动构建并上传 Android APK（`omd-android-vX.Y.Z.apk`）
+- `scripts/build-android.sh` 使用 `fetch-web-assets.sh` 拉取全部离线资源
+- Android `versionName` 升至 **0.9.0**（`versionCode` 4）
+
 ## [0.9.0] - 2026-07-24
 
 ### 新增 — 格式扩展
