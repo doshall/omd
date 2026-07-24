@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsCast;
+use omd_common::Locale;
 
 pub const STORAGE_SETTINGS: &str = "omd-web-settings";
 
@@ -39,6 +40,9 @@ pub struct EditorSettings {
     pub compress_images: bool,
     pub max_image_width: u32,
     pub image_quality: u8,
+    pub locale: Locale,
+    pub spell_check: bool,
+    pub custom_preview_css: String,
 }
 
 impl Default for EditorSettings {
@@ -63,6 +67,9 @@ impl Default for EditorSettings {
             compress_images: true,
             max_image_width: 1920,
             image_quality: 85,
+            locale: Locale::default(),
+            spell_check: true,
+            custom_preview_css: String::new(),
         }
     }
 }
@@ -105,6 +112,24 @@ pub fn apply_editor_css(settings: &EditorSettings) {
                 let pad = settings.editor_font_size * 0.857;
                 let _ = style.set_property("--editor-pad", &format!("{pad}px"));
             }
+        }
+        apply_custom_preview_css(&doc, &settings.custom_preview_css);
+    }
+}
+
+pub fn apply_custom_preview_css(doc: &web_sys::Document, css: &str) {
+    const STYLE_ID: &str = "omd-custom-preview-css";
+    if let Some(existing) = doc.get_element_by_id(STYLE_ID) {
+        let _ = existing.remove();
+    }
+    if css.trim().is_empty() {
+        return;
+    }
+    if let Ok(style) = doc.create_element("style") {
+        style.set_id(STYLE_ID);
+        style.set_text_content(Some(css));
+        if let Some(head) = doc.head() {
+            let _ = head.append_child(&style);
         }
     }
 }

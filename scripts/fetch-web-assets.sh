@@ -9,6 +9,10 @@ KATEX_VERSION="0.16.11"
 KATEX_JS_URL="https://cdn.jsdelivr.net/npm/katex@${KATEX_VERSION}/dist/katex.min.js"
 KATEX_CSS_URL="https://cdn.jsdelivr.net/npm/katex@${KATEX_VERSION}/dist/katex.min.css"
 
+PAKO_URL="https://cdn.jsdelivr.net/npm/pako@2/dist/pako.min.js"
+VIZ_URL="https://cdn.jsdelivr.net/npm/viz.js@2.1.2/viz.min.js"
+VIZ_RENDER_URL="https://cdn.jsdelivr.net/npm/viz.js@2.1.2/full.render.js"
+
 mkdir -p "$ASSETS"
 
 if [[ ! -f "$ASSETS/mermaid.min.js" ]]; then
@@ -31,3 +35,17 @@ if [[ ! -f "$ASSETS/katex.min.css" ]]; then
 else
   echo "==> katex.min.css already present"
 fi
+
+for pair in \
+  "pako.min.js:$PAKO_URL" \
+  "viz.min.js:$VIZ_URL" \
+  "full.render.js:$VIZ_RENDER_URL"; do
+  name="${pair%%:*}"
+  url="${pair#*:}"
+  if [[ ! -f "$ASSETS/$name" ]]; then
+    echo "==> Downloading $name"
+    curl -fsSL -o "$ASSETS/$name" "$url"
+  else
+    echo "==> $name already present"
+  fi
+done

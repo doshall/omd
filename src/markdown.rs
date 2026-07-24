@@ -191,6 +191,16 @@ impl<'a> PreviewState<'a> {
             return;
         }
 
+        if lang.as_deref() == Some("plantuml") {
+            let url = omd_common::plantuml_svg_url(&code);
+            let max_w = ui.available_width().min(640.0);
+            ui.vertical(|ui| {
+                ui.add(egui::Image::new(&url).max_width(max_w));
+                ui.add_space(6.0);
+            });
+            return;
+        }
+
         let frame = egui::Frame::none()
             .fill(ui.visuals().code_bg_color)
             .inner_margin(8.0)
@@ -598,14 +608,20 @@ pub fn is_image_path(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-/// Convert Markdown to HTML for export (includes Mermaid block transform).
-pub fn markdown_to_html(markdown: &str, show_toc: bool, enable_footnotes: bool) -> String {
+/// Convert Markdown to HTML for export (includes diagram block transforms).
+pub fn markdown_to_html(
+    markdown: &str,
+    show_toc: bool,
+    enable_footnotes: bool,
+    locale: omd_common::Locale,
+) -> String {
     let (_, body) = parse_front_matter(markdown);
     omd_common::markdown_to_html_with_options(
         body,
         omd_common::MarkdownRenderOptions {
             include_toc: show_toc,
             enable_footnotes,
+            locale,
         },
     )
 }

@@ -4,6 +4,25 @@
 
 ## [未发布]
 
+## [0.9.0] - 2026-07-24
+
+### 新增 — 格式扩展
+
+- **PlantUML / Graphviz**：`plantuml`、`graphviz`、`dot` 代码块在 Web 预览与导出 HTML 中渲染为图表（PlantUML 经 plantuml.com，Graphviz 本地 viz.js）
+- **自定义预览 CSS**：设置中可注入 CSS，同步应用于 Web 预览与导出 HTML
+- **桌面 PlantUML 预览**：通过 plantuml.com SVG 在预览区显示
+
+### 新增 — 打磨与补齐
+
+- **多语言界面（中/英）**：Web 与桌面设置、菜单支持 `locale` 切换（`omd-common` 共享 `t()` 表）
+- **拼写检查**（Web）：设置项控制编辑器 `spellcheck`（默认开启）
+- **无障碍**（Web）：`role` / `aria-label` / `aria-live`、设置对话框 `aria-modal`
+
+### 变更
+
+- `MarkdownRenderOptions` 增加 `locale`；`omd-common` 统一 `transform_diagram_blocks`
+- Web 离线资源增加 pako、viz.js；版本号升至 **0.9.0**
+
 ## [0.8.1] - 2026-07-24
 
 ### 新增

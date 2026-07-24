@@ -17,17 +17,25 @@
     <link data-trunk rel="copy-file" href="assets/mermaid.min.js" />
     <link data-trunk rel="copy-file" href="assets/katex.min.js" />
     <link data-trunk rel="copy-file" href="assets/katex.min.css" />
+    <link data-trunk rel="copy-file" href="assets/pako.min.js" />
+    <link data-trunk rel="copy-file" href="assets/viz.min.js" />
+    <link data-trunk rel="copy-file" href="assets/full.render.js" />
     <link data-trunk rel="copy-file" href="assets/highlight.min.js" />
     <link data-trunk rel="copy-file" href="assets/highlight-github.min.css" />
     <link data-trunk rel="copy-file" href="assets/highlight-github-dark.min.css" />
     <link data-trunk rel="copy-file" href="assets/icon-192.png" />
     <link data-trunk rel="copy-file" href="assets/icon-512.png" />
     <link data-trunk rel="copy-file" href="assets/apple-touch-icon.png" />
+    <link data-trunk rel="copy-file" href="diagrams.js" />
     <link id="hljs-theme" rel="stylesheet" href="highlight-github.min.css" />
     <link id="katex-theme" rel="stylesheet" href="katex.min.css" />
     <script src="mermaid.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js'"></script>
     <script src="katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js'"></script>
     <script src="highlight.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js'"></script>
+    <script src="pako.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/pako@2/dist/pako.min.js'"></script>
+    <script src="viz.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/viz.js@2.1.2/viz.min.js'"></script>
+    <script src="full.render.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/viz.js@2.1.2/full.render.js'"></script>
+    <script src="diagrams.js"></script>
     <script>
         mermaid.initialize({
             startOnLoad: false,
@@ -65,7 +73,10 @@
                     : 'highlight-github.min.css';
             }
             document.querySelectorAll('.preview-content pre code').forEach((block) => {
-                if (block.classList.contains('language-mermaid')) return;
+                if (block.classList.contains('language-mermaid')
+                    || block.classList.contains('language-plantuml')
+                    || block.classList.contains('language-graphviz')
+                    || block.classList.contains('language-dot')) return;
                 hljs.highlightElement(block);
             });
         };
@@ -188,13 +199,14 @@
             printWindow.document.close();
         };
 
-        window.omdApplyTheme = function (dark) {
+            window.omdApplyTheme = function (dark) {
             document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
             document.querySelectorAll('.preview-content .math[data-katex]').forEach(n => {
                 n.removeAttribute('data-katex');
                 n.textContent = n.getAttribute('data-tex') || n.textContent;
             });
             window.omdRenderMermaid();
+            window.omdRenderDiagrams?.();
             window.omdRenderMath();
             window.omdHighlightCode();
         };
