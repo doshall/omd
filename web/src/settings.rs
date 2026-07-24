@@ -18,6 +18,7 @@ fn save_storage(key: &str, value: &str) {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[serde(default)]
 pub struct EditorSettings {
     pub show_line_numbers: bool,
     pub highlight_current_line: bool,
@@ -33,6 +34,8 @@ pub struct EditorSettings {
     pub keybinding_mode: crate::keybindings::KeybindingMode,
     pub vim_show_block_highlight: bool,
     pub vim_use_system_clipboard: bool,
+    pub show_toc: bool,
+    pub enable_footnotes: bool,
 }
 
 impl Default for EditorSettings {
@@ -52,6 +55,8 @@ impl Default for EditorSettings {
             keybinding_mode: crate::keybindings::KeybindingMode::Standard,
             vim_show_block_highlight: true,
             vim_use_system_clipboard: true,
+            show_toc: true,
+            enable_footnotes: true,
         }
     }
 }

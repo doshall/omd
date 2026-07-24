@@ -428,7 +428,13 @@ impl OmdApp {
         }
 
         if let Some(path) = dialog.save_file() {
-            let html = export::export_html_document(&self.content, &title, self.dark_mode);
+            let html = export::export_html_document(
+                &self.content,
+                &title,
+                self.dark_mode,
+                self.editor_settings.show_toc,
+                self.editor_settings.enable_footnotes,
+            );
             match std::fs::write(&path, html) {
                 Ok(()) => self.set_status(format!("Exported HTML to {}", path.display())),
                 Err(e) => self.set_status(format!("Export failed: {e}")),
@@ -438,7 +444,12 @@ impl OmdApp {
 
     fn export_pdf_via_browser(&mut self) {
         let title = export::export_title(self.file_path.as_deref(), &self.content);
-        let html = export::export_print_html_document(&self.content, &title);
+        let html = export::export_print_html_document(
+            &self.content,
+            &title,
+            self.editor_settings.show_toc,
+            self.editor_settings.enable_footnotes,
+        );
         let temp_dir = std::env::temp_dir();
         let file_name = format!(
             "omd-print-{}.html",
@@ -960,6 +971,8 @@ impl OmdApp {
             preview_syntax_highlight: self.editor_settings.preview_syntax_highlight,
             preview_font_size: self.editor_settings.preview_font_size,
             image_lightbox: &mut self.image_lightbox,
+            show_toc: self.editor_settings.show_toc,
+            enable_footnotes: self.editor_settings.enable_footnotes,
         };
         let scroll = egui::ScrollArea::both()
             .id_salt("omd_preview_scroll")

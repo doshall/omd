@@ -1,9 +1,14 @@
 use serde::{Deserialize, Serialize};
+use wasm_bindgen_futures::spawn_local;
+
+use crate::idb;
 
 pub const STORAGE_TABS: &str = "omd-web-tabs";
+pub const STORAGE_TABS_META: &str = "omd-web-tabs-meta";
 const LEGACY_CONTENT: &str = "omd-web-content";
 const LEGACY_FILENAME: &str = "omd-web-filename";
 const MAX_TABS: usize = 20;
+const INLINE_STORAGE_THRESHOLD: usize = 1_500_000;
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct Tab {
@@ -17,6 +22,24 @@ pub struct Tab {
 pub struct TabStore {
     pub tabs: Vec<Tab>,
     pub active_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+struct TabMeta {
+    id: String,
+    filename: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+struct TabStoreMeta {
+    tabs: Vec<TabMeta>,
+    active_id: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+struct TabDoc {
+    content: String,
+    saved_snapshot: String,
 }
 
 impl TabStore {
@@ -87,10 +110,18 @@ impl TabStore {
             Some(i) => i,
             None => return false,
         };
+        let removed_id = self.tabs[idx].id.clone();
         self.tabs.remove(idx);
         if self.active_id == id {
             let next = idx.min(self.tabs.len().saturating_sub(1));
             self.active_id = self.tabs[next].id.clone();
+        }
+        if idb::storage_uses_idb() {
+            let key = idb::tab_key(&removed_id);
+            #[cfg(target_arch = "wasm32")]
+            spawn_local(async move {
+                let _ = idb::delete_string(&key).await;
+            });
         }
         true
     }
@@ -110,15 +141,25 @@ pub fn load_storage(key: &str) -> Option<String> {
         .and_then(|s| s.get_item(key).ok().flatten())
 }
 
-pub fn save_storage(key: &str, value: &str) {
+pub fn save_storage(key: &str, value: &str) -> bool {
     if let Some(storage) = web_sys::window()
         .and_then(|w| w.local_storage().ok().flatten())
     {
-        let _ = storage.set_item(key, value);
+        storage.set_item(key, value).is_ok()
+    } else {
+        false
     }
 }
 
+pub fn needs_idb_hydration() -> bool {
+    idb::storage_uses_idb() || load_storage(STORAGE_TABS_META).is_some()
+}
+
 pub fn load_tab_store(default_content: String, default_filename: String) -> TabStore {
+    if needs_idb_hydration() {
+        return TabStore::default_with_content(String::new(), "document.md".to_string());
+    }
+
     if let Some(json) = load_storage(STORAGE_TABS) {
         if let Ok(store) = serde_json::from_str::<TabStore>(&json) {
             if !store.tabs.is_empty() && store.tabs.iter().any(|t| t.id == store.active_id) {
@@ -134,8 +175,99 @@ pub fn load_tab_store(default_content: String, default_filename: String) -> TabS
 
 pub fn persist_tab_store(store: &TabStore) {
     if let Ok(json) = serde_json::to_string(store) {
-        save_storage(STORAGE_TABS, &json);
+        if !idb::storage_uses_idb() && json.len() < INLINE_STORAGE_THRESHOLD && save_storage(STORAGE_TABS, &json)
+        {
+            return;
+        }
     }
+    persist_tab_store_idb(store);
+}
+
+fn persist_tab_store_idb(store: &TabStore) {
+    let meta = TabStoreMeta {
+        tabs: store
+            .tabs
+            .iter()
+            .map(|tab| TabMeta {
+                id: tab.id.clone(),
+                filename: tab.filename.clone(),
+            })
+            .collect(),
+        active_id: store.active_id.clone(),
+    };
+    if let Ok(json) = serde_json::to_string(&meta) {
+        let _ = save_storage(STORAGE_TABS_META, &json);
+        let _ = save_storage(STORAGE_TABS, "");
+    }
+    idb::enable_idb_storage();
+
+    let tabs: Vec<(String, String, String)> = store
+        .tabs
+        .iter()
+        .map(|tab| {
+            (
+                tab.id.clone(),
+                tab.content.clone(),
+                tab.saved_snapshot.clone(),
+            )
+        })
+        .collect();
+    #[cfg(target_arch = "wasm32")]
+    spawn_local(async move {
+        for (id, content, saved_snapshot) in tabs {
+            if let Ok(doc) = serde_json::to_string(&TabDoc {
+                content,
+                saved_snapshot,
+            }) {
+                let _ = idb::put_string(&idb::tab_key(&id), &doc).await;
+            }
+        }
+    });
+}
+
+pub async fn hydrate_tab_store_from_idb() -> Option<TabStore> {
+    let meta_json = load_storage(STORAGE_TABS_META)?;
+    let meta: TabStoreMeta = serde_json::from_str(&meta_json).ok()?;
+    let mut tabs = Vec::with_capacity(meta.tabs.len());
+    for tab_meta in meta.tabs {
+        let doc_json = idb::get_string(&idb::tab_key(&tab_meta.id))
+            .await
+            .ok()
+            .flatten()?;
+        let doc: TabDoc = serde_json::from_str(&doc_json).ok()?;
+        tabs.push(Tab {
+            id: tab_meta.id,
+            filename: tab_meta.filename,
+            content: doc.content,
+            saved_snapshot: doc.saved_snapshot,
+        });
+    }
+    if tabs.is_empty() {
+        return None;
+    }
+    if !tabs.iter().any(|tab| tab.id == meta.active_id) {
+        return None;
+    }
+    Some(TabStore {
+        tabs,
+        active_id: meta.active_id,
+    })
+}
+
+pub async fn migrate_inline_tabs_to_idb_if_needed() -> Option<TabStore> {
+    if idb::storage_uses_idb() || load_storage(STORAGE_TABS_META).is_some() {
+        return None;
+    }
+    let json = load_storage(STORAGE_TABS)?;
+    let store: TabStore = serde_json::from_str(&json).ok()?;
+    if store.tabs.is_empty() {
+        return None;
+    }
+    if json.len() < INLINE_STORAGE_THRESHOLD {
+        return None;
+    }
+    persist_tab_store_idb(&store);
+    Some(store)
 }
 
 fn new_tab_id() -> String {

@@ -1,8 +1,8 @@
 use crate::mermaid::MermaidCache;
 use crate::syntax_highlight;
 use egui::{Color32, FontFamily, FontId, RichText, Sense, Stroke, Ui};
-use omd_common::{collect_headings, markdown_to_html as common_html, parse_front_matter};
-use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Options, Parser, Tag, TagEnd};
+use omd_common::{collect_headings, parse_front_matter};
+use pulldown_cmark::{CodeBlockKind, Event, HeadingLevel, Parser, Tag, TagEnd};
 use std::path::{Path, PathBuf};
 
 pub struct PreviewContext<'a> {
@@ -12,6 +12,8 @@ pub struct PreviewContext<'a> {
     pub preview_syntax_highlight: bool,
     pub preview_font_size: f32,
     pub image_lightbox: &'a mut Option<String>,
+    pub show_toc: bool,
+    pub enable_footnotes: bool,
 }
 
 struct PreviewState<'a> {
@@ -402,7 +404,7 @@ impl<'a> PreviewState<'a> {
                         .color(Color32::GRAY),
                 );
             }
-            Event::FootnoteReference(name) => {
+            Event::FootnoteReference(name) if self.ctx.enable_footnotes => {
                 self.flush_inline(ui);
                 ui.label(
                     RichText::new(format!("[^{name}]"))
@@ -410,12 +412,12 @@ impl<'a> PreviewState<'a> {
                         .color(ui.visuals().hyperlink_color),
                 );
             }
-            Event::Start(Tag::FootnoteDefinition(name)) => {
+            Event::Start(Tag::FootnoteDefinition(name)) if self.ctx.enable_footnotes => {
                 self.in_footnote_def = true;
                 self.footnote_name = name.to_string();
                 self.footnote_buffer.clear();
             }
-            Event::End(TagEnd::FootnoteDefinition) => {
+            Event::End(TagEnd::FootnoteDefinition) if self.ctx.enable_footnotes => {
                 self.footnote_defs
                     .push((self.footnote_name.clone(), self.footnote_buffer.clone()));
                 self.in_footnote_def = false;
@@ -452,8 +454,10 @@ pub fn render_preview<'a>(ui: &mut Ui, markdown: &str, ctx: &'a mut PreviewConte
             ui.add_space(4.0);
         }
     }
+    let show_toc = ctx.show_toc;
+    let enable_footnotes = ctx.enable_footnotes;
     let headings = collect_headings(body);
-    if !headings.is_empty() {
+    if show_toc && !headings.is_empty() {
         ui.label(RichText::new("目录").strong());
         for entry in &headings {
             let indent = "  ".repeat(entry.level.saturating_sub(1) as usize);
@@ -462,7 +466,10 @@ pub fn render_preview<'a>(ui: &mut Ui, markdown: &str, ctx: &'a mut PreviewConte
         ui.separator();
     }
 
-    let parser = Parser::new_ext(body, markdown_options());
+    let parser = Parser::new_ext(
+        body,
+        omd_common::markdown_options_with(enable_footnotes),
+    );
     let mut state = PreviewState::new(ctx);
 
     for event in parser {
@@ -470,7 +477,7 @@ pub fn render_preview<'a>(ui: &mut Ui, markdown: &str, ctx: &'a mut PreviewConte
     }
     state.flush_inline(ui);
 
-    if !state.footnote_defs.is_empty() {
+    if enable_footnotes && !state.footnote_defs.is_empty() {
         ui.separator();
         ui.label(RichText::new("脚注").strong());
         for (name, text) in state.footnote_defs {
@@ -579,14 +586,16 @@ pub fn is_image_path(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn markdown_options() -> Options {
-    omd_common::markdown_options()
-}
-
 /// Convert Markdown to HTML for export (includes Mermaid block transform).
-pub fn markdown_to_html(markdown: &str) -> String {
+pub fn markdown_to_html(markdown: &str, show_toc: bool, enable_footnotes: bool) -> String {
     let (_, body) = parse_front_matter(markdown);
-    common_html(body)
+    omd_common::markdown_to_html_with_options(
+        body,
+        omd_common::MarkdownRenderOptions {
+            include_toc: show_toc,
+            enable_footnotes,
+        },
+    )
 }
 
 fn transform_mermaid_blocks(html: &str) -> String {

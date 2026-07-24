@@ -13,13 +13,34 @@ pub struct TocEntry {
     pub id: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MarkdownRenderOptions {
+    pub include_toc: bool,
+    pub enable_footnotes: bool,
+}
+
+impl Default for MarkdownRenderOptions {
+    fn default() -> Self {
+        Self {
+            include_toc: true,
+            enable_footnotes: true,
+        }
+    }
+}
+
 pub fn markdown_options() -> Options {
+    markdown_options_with(true)
+}
+
+pub fn markdown_options_with(enable_footnotes: bool) -> Options {
     let mut options = Options::empty();
     options.insert(Options::ENABLE_STRIKETHROUGH);
     options.insert(Options::ENABLE_TABLES);
     options.insert(Options::ENABLE_TASKLISTS);
     options.insert(Options::ENABLE_MATH);
-    options.insert(Options::ENABLE_FOOTNOTES);
+    if enable_footnotes {
+        options.insert(Options::ENABLE_FOOTNOTES);
+    }
     options
 }
 
@@ -89,19 +110,39 @@ pub fn collect_headings(markdown: &str) -> Vec<TocEntry> {
 }
 
 pub fn markdown_to_html(markdown: &str) -> String {
-    markdown_to_html_with_toc(markdown, true).0
+    markdown_to_html_with_options(markdown, MarkdownRenderOptions::default())
 }
 
 pub fn markdown_to_html_with_toc(markdown: &str, include_toc: bool) -> (String, Vec<TocEntry>) {
+    markdown_to_html_with_options_parts(
+        markdown,
+        MarkdownRenderOptions {
+            include_toc,
+            ..Default::default()
+        },
+    )
+}
+
+pub fn markdown_to_html_with_options(
+    markdown: &str,
+    options: MarkdownRenderOptions,
+) -> String {
+    markdown_to_html_with_options_parts(markdown, options).0
+}
+
+pub fn markdown_to_html_with_options_parts(
+    markdown: &str,
+    options: MarkdownRenderOptions,
+) -> (String, Vec<TocEntry>) {
     let headings = collect_headings(markdown);
-    let options = markdown_options();
-    let parser = Parser::new_ext(markdown, options);
+    let parser_options = markdown_options_with(options.enable_footnotes);
+    let parser = Parser::new_ext(markdown, parser_options);
     let mut html_output = String::new();
     html::push_html(&mut html_output, parser);
     let html_output = transform_mermaid_blocks(&html_output);
     let html_output = inject_heading_ids(&html_output, &headings);
 
-    let toc_html = if include_toc && !headings.is_empty() {
+    let toc_html = if options.include_toc && !headings.is_empty() {
         render_toc_html(&headings)
     } else {
         String::new()
@@ -185,5 +226,32 @@ mod tests {
         assert!(html.contains("class=\"toc\""));
         assert!(html.contains("href=\"#alpha\""));
         assert!(html.contains("<h1 id=\"alpha\">"));
+    }
+
+    #[test]
+    fn toc_can_be_disabled() {
+        let md = "# Alpha\n\nBody.";
+        let html = markdown_to_html_with_options(
+            md,
+            MarkdownRenderOptions {
+                include_toc: false,
+                enable_footnotes: true,
+            },
+        );
+        assert!(!html.contains("class=\"toc\""));
+    }
+
+    #[test]
+    fn footnotes_can_be_disabled() {
+        let md = "Text[^1]\n\n[^1]: footnote body";
+        let html = markdown_to_html_with_options(
+            md,
+            MarkdownRenderOptions {
+                include_toc: true,
+                enable_footnotes: false,
+            },
+        );
+        assert!(!html.contains("class=\"footnotes\""));
+        assert!(!html.contains("fnref"));
     }
 }
