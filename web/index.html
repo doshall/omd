@@ -15,6 +15,8 @@
     <link data-trunk rel="copy-file" href="manifest.webmanifest" />
     <link data-trunk rel="copy-file" href="sw.js" />
     <link data-trunk rel="copy-file" href="assets/mermaid.min.js" />
+    <link data-trunk rel="copy-file" href="assets/katex.min.js" />
+    <link data-trunk rel="copy-file" href="assets/katex.min.css" />
     <link data-trunk rel="copy-file" href="assets/highlight.min.js" />
     <link data-trunk rel="copy-file" href="assets/highlight-github.min.css" />
     <link data-trunk rel="copy-file" href="assets/highlight-github-dark.min.css" />
@@ -22,7 +24,9 @@
     <link data-trunk rel="copy-file" href="assets/icon-512.png" />
     <link data-trunk rel="copy-file" href="assets/apple-touch-icon.png" />
     <link id="hljs-theme" rel="stylesheet" href="highlight-github.min.css" />
+    <link id="katex-theme" rel="stylesheet" href="katex.min.css" />
     <script src="mermaid.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js'"></script>
+    <script src="katex.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js'"></script>
     <script src="highlight.min.js" onerror="this.onerror=null;this.src='https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js'"></script>
     <script>
         mermaid.initialize({
@@ -30,6 +34,26 @@
             theme: document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default',
             securityLevel: 'loose',
         });
+
+        function omdRenderMathNodes(root) {
+            if (typeof katex === 'undefined') return;
+            root.querySelectorAll('.math.math-inline:not([data-katex])').forEach((el) => {
+                try {
+                    katex.render(el.textContent, el, { throwOnError: false, displayMode: false });
+                    el.setAttribute('data-katex', '1');
+                } catch (e) {
+                    console.warn('katex inline:', e);
+                }
+            });
+            root.querySelectorAll('.math.math-display:not([data-katex])').forEach((el) => {
+                try {
+                    katex.render(el.textContent, el, { throwOnError: false, displayMode: true });
+                    el.setAttribute('data-katex', '1');
+                } catch (e) {
+                    console.warn('katex display:', e);
+                }
+            });
+        }
 
         window.omdHighlightCode = function () {
             if (typeof hljs === 'undefined') return;
@@ -61,12 +85,34 @@
             }
         };
 
+        window.omdRenderMath = function () {
+            const root = document.querySelector('.preview-content');
+            if (!root) return;
+            omdRenderMathNodes(root);
+        };
+
+        window.omdPrintHtml = function (html) {
+            const printWindow = window.open('', '_blank');
+            if (!printWindow) {
+                window.alert('无法打开打印窗口，请允许弹出窗口后重试。');
+                return;
+            }
+            printWindow.document.open();
+            printWindow.document.write(html);
+            printWindow.document.close();
+        };
+
         window.omdApplyTheme = function (dark) {
             document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
             document.querySelectorAll('.preview-content .mermaid[data-processed]').forEach(n => {
                 n.removeAttribute('data-processed');
             });
+            document.querySelectorAll('.preview-content .math[data-katex]').forEach(n => {
+                n.removeAttribute('data-katex');
+                n.textContent = n.getAttribute('data-tex') || n.textContent;
+            });
             window.omdRenderMermaid();
+            window.omdRenderMath();
             window.omdHighlightCode();
         };
 

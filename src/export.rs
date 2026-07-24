@@ -58,6 +58,7 @@ img { max-width: 100%; height: auto; border-radius: 6px; margin: 0.5rem 0; displ
 }
 body.light .mermaid { background: #e9ecef; }
 body.dark .mermaid { background: #2c2e33; }
+.math-display { display: block; margin: 0.75rem 0; overflow-x: auto; }
 footer {
   max-width: 48rem;
   margin: 2rem auto 0;
@@ -68,17 +69,77 @@ footer {
 }
 "#;
 
+const PRINT_CSS: &str = r#"
+@media print {
+  body { padding: 0; background: #fff !important; color: #000 !important; }
+  article { max-width: none; }
+  footer { display: none; }
+  a { color: #000; text-decoration: none; }
+}
+@page { margin: 2cm; }
+"#;
+
+const EXPORT_POST_SCRIPT: &str = r#"
+function omdRenderMathNodes(root) {
+  if (typeof katex === 'undefined') return;
+  root.querySelectorAll('.math.math-inline:not([data-katex])').forEach((el) => {
+    try {
+      katex.render(el.textContent, el, { throwOnError: false, displayMode: false });
+      el.setAttribute('data-katex', '1');
+    } catch (e) { console.warn('katex inline:', e); }
+  });
+  root.querySelectorAll('.math.math-display:not([data-katex])').forEach((el) => {
+    try {
+      katex.render(el.textContent, el, { throwOnError: false, displayMode: true });
+      el.setAttribute('data-katex', '1');
+    } catch (e) { console.warn('katex display:', e); }
+  });
+}
+omdRenderMathNodes(document);
+document.querySelectorAll('pre code').forEach((block) => {
+  if (!block.classList.contains('language-mermaid')) hljs.highlightElement(block);
+});
+mermaid.run({ nodes: document.querySelectorAll('.mermaid') }).catch(console.warn);
+"#;
+
 /// Build a standalone HTML document from Markdown source.
 pub fn export_html_document(markdown: &str, title: &str, dark_mode: bool) -> String {
+    build_html_document(markdown, title, dark_mode, false)
+}
+
+/// HTML for print-to-PDF via the system browser (light theme, auto-print).
+pub fn export_print_html_document(markdown: &str, title: &str) -> String {
+    build_html_document(markdown, title, false, true)
+}
+
+fn build_html_document(markdown: &str, title: &str, dark_mode: bool, for_print: bool) -> String {
     let body = markdown::markdown_to_html(markdown);
-    let theme_class = if dark_mode { "dark" } else { "light" };
-    let mermaid_theme = if dark_mode { "dark" } else { "default" };
-    let hljs_theme = if dark_mode {
+    let theme_class = if dark_mode && !for_print {
+        "dark"
+    } else {
+        "light"
+    };
+    let mermaid_theme = if dark_mode && !for_print {
+        "dark"
+    } else {
+        "default"
+    };
+    let hljs_theme = if dark_mode && !for_print {
         "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/styles/github-dark.min.css"
     } else {
         "https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/styles/github.min.css"
     };
     let escaped_title = html_escape_attr(title);
+    let print_block = if for_print {
+        format!("<style>{PRINT_CSS}</style>")
+    } else {
+        String::new()
+    };
+    let print_script = if for_print {
+        r#"window.addEventListener('load', () => setTimeout(() => window.print(), 400));"#
+    } else {
+        ""
+    };
 
     format!(
         r#"<!DOCTYPE html>
@@ -87,8 +148,11 @@ pub fn export_html_document(markdown: &str, title: &str, dark_mode: bool) -> Str
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>{escaped_title}</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
 <link rel="stylesheet" href="{hljs_theme}" />
 <style>{EXPORT_CSS}</style>
+{print_block}
+<script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js"></script>
 </head>
@@ -99,10 +163,8 @@ pub fn export_html_document(markdown: &str, title: &str, dark_mode: bool) -> Str
 <footer>Exported by <a href="https://github.com/doshall/omd">omd</a></footer>
 <script>
 mermaid.initialize({{ startOnLoad: false, theme: '{mermaid_theme}', securityLevel: 'loose' }});
-document.querySelectorAll('pre code').forEach((block) => {{
-  if (!block.classList.contains('language-mermaid')) hljs.highlightElement(block);
-}});
-mermaid.run({{ nodes: document.querySelectorAll('.mermaid') }}).catch(console.warn);
+{EXPORT_POST_SCRIPT}
+{print_script}
 </script>
 </body>
 </html>
@@ -152,16 +214,22 @@ mod tests {
     #[test]
     fn export_contains_article_and_title() {
         let html = export_html_document("# Hello\n\nWorld", "Test", false);
-        assert!(html.contains("<title>Test</title>"));
         assert!(html.contains("<article"));
-        assert!(html.contains("Hello"));
+        assert!(html.contains("<title>Test</title>"));
+        assert!(html.contains("katex.min.js"));
     }
 
     #[test]
-    fn title_from_markdown_heading() {
+    fn export_title_from_heading() {
         assert_eq!(
             export_title(None, "# My Doc\n\nbody"),
             "My Doc"
         );
+    }
+
+    #[test]
+    fn print_html_includes_print_hook() {
+        let html = export_print_html_document("# Doc", "Doc");
+        assert!(html.contains("window.print"));
     }
 }

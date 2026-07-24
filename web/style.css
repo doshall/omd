@@ -79,6 +79,80 @@ html, body {
     justify-content: flex-end;
 }
 
+.tab-bar {
+    display: flex;
+    align-items: stretch;
+    gap: 0.25rem;
+    padding: 0.35rem 0.75rem 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    flex-shrink: 0;
+}
+
+.tab-item {
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    background: var(--toolbar-bg);
+    max-width: 12rem;
+}
+
+.tab-item.active {
+    background: var(--bg);
+    border-color: var(--accent);
+}
+
+.tab-select {
+    border: none;
+    background: transparent;
+    color: var(--text);
+    padding: 0.35rem 0.5rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 10rem;
+}
+
+.tab-close {
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    padding: 0 0.4rem;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.tab-close:hover {
+    color: var(--text);
+}
+
+.tab-add {
+    border: 1px dashed var(--border);
+    background: transparent;
+    color: var(--text-muted);
+    border-radius: 6px;
+    min-width: 2rem;
+    cursor: pointer;
+    margin-bottom: 0.15rem;
+}
+
+.tab-add:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+}
+
+.preview-content .math-display {
+    display: block;
+    margin: 0.75rem 0;
+    overflow-x: auto;
+}
+
 .find-bar {
     display: flex;
     flex-wrap: wrap;
