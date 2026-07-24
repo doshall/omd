@@ -70,6 +70,17 @@
             window.omdHighlightCode();
         };
 
+        window.omdHasUnsavedChanges = false;
+        window.omdSetUnsavedWarning = function (enabled) {
+            window.omdHasUnsavedChanges = !!enabled;
+        };
+        window.addEventListener('beforeunload', function (event) {
+            if (window.omdHasUnsavedChanges) {
+                event.preventDefault();
+                event.returnValue = '';
+            }
+        });
+
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('./sw.js').catch((err) => {

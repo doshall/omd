@@ -125,14 +125,31 @@ class MainActivity : AppCompatActivity() {
     private fun setupBackNavigation() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                if (binding.webView.canGoBack()) {
-                    binding.webView.goBack()
-                } else {
-                    isEnabled = false
-                    onBackPressedDispatcher.onBackPressed()
+                binding.webView.evaluateJavascript(
+                    "(function(){ return window.omdHasUnsavedChanges ? '1' : '0'; })();"
+                ) { value ->
+                    if (value == "\"1\"") {
+                        showDiscardDialog {
+                            finish()
+                        }
+                    } else if (binding.webView.canGoBack()) {
+                        binding.webView.goBack()
+                    } else {
+                        isEnabled = false
+                        onBackPressedDispatcher.onBackPressed()
+                    }
                 }
             }
         })
+    }
+
+    private fun showDiscardDialog(onDiscard: () -> Unit) {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(R.string.unsaved_title)
+            .setMessage(R.string.unsaved_message)
+            .setPositiveButton(R.string.unsaved_discard) { _, _ -> onDiscard() }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     private fun handleIncomingIntent(intent: Intent?) {

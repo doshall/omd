@@ -3,4 +3,7 @@
     <string name="app_name">omd</string>
     <string name="file_chooser_error">无法打开文件选择器</string>
     <string name="open_file_error">无法打开文件</string>
+    <string name="unsaved_title">未保存的修改</string>
+    <string name="unsaved_message">当前内容尚未下载保存到文件，确定退出吗？</string>
+    <string name="unsaved_discard">退出</string>
 </resources>
