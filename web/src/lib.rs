@@ -1,6 +1,7 @@
 mod editor_highlight;
 mod export;
 mod find_replace;
+mod idb;
 mod recent;
 mod tabs;
 mod vim_ex;
@@ -185,6 +186,7 @@ fn App() -> impl IntoView {
     let initial_snapshot = initial_tab.saved_snapshot;
     let (saved_snapshot, set_saved_snapshot) = signal(initial_snapshot);
     let (saved_hint, set_saved_hint) = signal(false);
+    let (storage_loading, set_storage_loading) = signal(tabs::needs_idb_hydration());
     let (find_open, set_find_open) = signal(false);
     let (find_replace_mode, set_find_replace_mode) = signal(false);
     let (find_query, set_find_query) = signal(String::new());
@@ -204,6 +206,38 @@ fn App() -> impl IntoView {
     let file_input_ref = NodeRef::<Input>::new();
     let image_input_ref = NodeRef::<Input>::new();
     let command_input_ref = NodeRef::<Input>::new();
+
+    // Hydrate tab content from IndexedDB when metadata-only storage is enabled.
+    Effect::new({
+        let set_tab_store = set_tab_store.clone();
+        let set_content = set_content.clone();
+        let set_filename = set_filename.clone();
+        let set_saved_snapshot = set_saved_snapshot.clone();
+        let set_storage_loading = set_storage_loading.clone();
+        move |_| {
+            if !tabs::needs_idb_hydration() {
+                spawn_local(async move {
+                    if let Some(store) = tabs::migrate_inline_tabs_to_idb_if_needed().await {
+                        set_tab_store.set(store);
+                    }
+                });
+                return;
+            }
+            set_storage_loading.set(true);
+            spawn_local(async move {
+                let store = tabs::hydrate_tab_store_from_idb().await;
+                if let Some(store) = store {
+                    if let Some(tab) = store.active_tab() {
+                        set_content.set(tab.content.clone());
+                        set_filename.set(tab.filename.clone());
+                        set_saved_snapshot.set(tab.saved_snapshot.clone());
+                    }
+                    set_tab_store.set(store);
+                }
+                set_storage_loading.set(false);
+            });
+        }
+    });
 
     // Auto-save to localStorage (tabs + preferences)
     Effect::new(move |_| {
@@ -697,7 +731,9 @@ fn App() -> impl IntoView {
         }
     };
 
-    let preview_html = move || markdown::markdown_to_html(&content.get());
+    let preview_html = move || {
+        markdown::markdown_to_html(&content.get(), &editor_settings.get())
+    };
     let editor_highlight_html = move || {
         if editor_settings.get().editor_syntax_highlight {
             editor_highlight::lines_to_html(&content.get())
@@ -867,22 +903,23 @@ fn App() -> impl IntoView {
                 let name = file.name();
                 let reader = web_sys::FileReader::new().unwrap();
                 let reader_clone = reader.clone();
+                let name_for_recent = name.clone();
                 let onload = Closure::wrap(Box::new(move |_: web_sys::ProgressEvent| {
                     if let Ok(result) = reader_clone.result() {
                         if let Some(text) = result.as_string() {
                             set_saved_snapshot.set(text.clone());
-                            set_content.set(text);
+                            set_content.set(text.clone());
+                            set_recent_files.update(|r| {
+                                r.push(name_for_recent.clone(), text);
+                                recent::save_recent(r);
+                            });
                         }
                     }
                 }) as Box<dyn FnMut(_)>);
                 reader.set_onload(Some(onload.as_ref().unchecked_ref()));
                 onload.forget();
                 let _ = reader.read_as_text(&file);
-                set_filename.set(name.clone());
-                set_recent_files.update(|r| {
-                    r.push(name);
-                    recent::save_recent(r);
-                });
+                set_filename.set(name);
             }
         }
         input.set_value("");
@@ -890,6 +927,9 @@ fn App() -> impl IntoView {
 
     view! {
         <div id="app" class=move || if editor_settings.get().focus_mode { "focus-mode" } else { "" }>
+            {move || storage_loading.get().then(|| view! {
+                <div class="storage-loading">"正在加载文档…"</div>
+            })}
             <header class="header">
                 <h1><span>"omd"</span>" Web"</h1>
                 <div class="header-actions">
@@ -929,35 +969,49 @@ fn App() -> impl IntoView {
                         let content = content.clone();
                         let filename = filename.clone();
                         let set_saved_snapshot = set_saved_snapshot.clone();
+                        let set_recent_files = set_recent_files.clone();
                         move |_| {
                             let text = content.get();
                             let name = filename.get();
                             download_file(&text, &name);
                             set_recent_files.update(|r| {
-                                r.push(name.clone());
+                                r.push(name.clone(), text.clone());
                                 recent::save_recent(r);
                             });
                             set_saved_snapshot.set(text);
                         }
                     }>"下载"</button>
-                    <button class="btn" on:click=move |_| {
-                        let md = content.get();
-                        let name = filename.get();
-                        let dark = dark_mode.get();
-                        let title = export::export_title(&name, &md);
-                        let html = export::export_html_document(&md, &title, dark);
-                        download_blob(
-                            &html,
-                            &export::html_filename(&name),
-                            "text/html;charset=utf-8",
-                        );
+                    <button class="btn" on:click={
+                        let content = content.clone();
+                        let filename = filename.clone();
+                        let dark_mode = dark_mode.clone();
+                        let editor_settings = editor_settings.clone();
+                        move |_| {
+                            let md = content.get();
+                            let name = filename.get();
+                            let dark = dark_mode.get();
+                            let settings = editor_settings.get();
+                            let title = export::export_title(&name, &md);
+                            let html = export::export_html_document(&md, &title, dark, &settings);
+                            download_blob(
+                                &html,
+                                &export::html_filename(&name),
+                                "text/html;charset=utf-8",
+                            );
+                        }
                     }>"导出 HTML"</button>
-                    <button class="btn" on:click=move |_| {
-                        let md = content.get();
-                        let name = filename.get();
-                        let title = export::export_title(&name, &md);
-                        let html = export::export_print_html_document(&md, &title);
-                        omd_print_html(&html);
+                    <button class="btn" on:click={
+                        let content = content.clone();
+                        let filename = filename.clone();
+                        let editor_settings = editor_settings.clone();
+                        move |_| {
+                            let md = content.get();
+                            let name = filename.get();
+                            let settings = editor_settings.get();
+                            let title = export::export_title(&name, &md);
+                            let html = export::export_print_html_document(&md, &title, &settings);
+                            omd_print_html(&html);
+                        }
                     }>"导出 PDF"</button>
                     <button class="btn btn-icon" title="设置"
                         on:click=move |_| set_settings_open.set(true)>"⚙"</button>
@@ -1057,7 +1111,7 @@ fn App() -> impl IntoView {
             <div class="recent-bar">
                 {move || {
                     recent_files.get().entries.iter().take(6).map(|entry| {
-                        let name = entry.filename.clone();
+                        let entry = entry.clone();
                         let set_tab_store = set_tab_store.clone();
                         let set_content = set_content.clone();
                         let set_filename = set_filename.clone();
@@ -1072,27 +1126,54 @@ fn App() -> impl IntoView {
                                     {
                                         return;
                                     }
-                                    let mut found = false;
-                                    set_tab_store.update(|store| {
-                                        if let Some(tab) = store.tabs.iter().find(|t| t.filename == name) {
-                                            let id = tab.id.clone();
-                                            if store.switch_tab(&id) {
+                                    let entry = entry.clone();
+                                    let set_tab_store = set_tab_store.clone();
+                                    let set_content = set_content.clone();
+                                    let set_filename = set_filename.clone();
+                                    let set_saved_snapshot = set_saved_snapshot.clone();
+                                    spawn_local(async move {
+                                        let Some(text) = recent::load_entry_content(&entry).await else {
+                                            web_sys::window().and_then(|w| {
+                                                w.alert_with_message(&format!(
+                                                    "无法加载「{}」的内容，请从「打开」重新导入",
+                                                    entry.filename
+                                                ))
+                                                .ok()
+                                            });
+                                            return;
+                                        };
+                                        let mut opened = false;
+                                        set_tab_store.update(|store| {
+                                            if let Some(tab) = store
+                                                .tabs
+                                                .iter()
+                                                .find(|t| t.filename == entry.filename)
+                                            {
+                                                let id = tab.id.clone();
+                                                if store.switch_tab(&id) {
+                                                    opened = true;
+                                                }
+                                            } else if store.add_tab(text.clone(), entry.filename.clone()) {
+                                                opened = true;
+                                            }
+                                            if opened {
                                                 switch_tab_content(
                                                     store,
                                                     set_content,
                                                     set_filename,
                                                     set_saved_snapshot,
                                                 );
-                                                found = true;
                                             }
+                                        });
+                                        if !opened {
+                                            web_sys::window().and_then(|w| {
+                                                w.alert_with_message("标签页已满，无法打开更多文档")
+                                                    .ok()
+                                            });
                                         }
                                     });
-                                    if !found {
-                                        web_sys::window()
-                                            .and_then(|w| w.alert_with_message(&format!("未找到已打开的「{name}」，请从「打开」重新导入")).ok());
-                                    }
                                 }
-                            >{name.clone()}</button>
+                            >{entry.filename.clone()}</button>
                         }
                     }).collect_view()
                 }}
@@ -1421,6 +1502,24 @@ fn App() -> impl IntoView {
                                         if let Ok(v) = el.value().parse::<f32>() {
                                             set_editor_settings.update(|s| s.preview_font_size = v);
                                         }
+                                    }
+                                />
+                            </label>
+                            <label class="settings-row">
+                                "显示目录（TOC）"
+                                <input type="checkbox" prop:checked=move || editor_settings.get().show_toc
+                                    on:change=move |ev| {
+                                        let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                        set_editor_settings.update(|s| s.show_toc = el.checked());
+                                    }
+                                />
+                            </label>
+                            <label class="settings-row">
+                                "启用脚注"
+                                <input type="checkbox" prop:checked=move || editor_settings.get().enable_footnotes
+                                    on:change=move |ev| {
+                                        let el: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                        set_editor_settings.update(|s| s.enable_footnotes = el.checked());
                                     }
                                 />
                             </label>

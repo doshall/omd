@@ -113,17 +113,32 @@ document.querySelectorAll('pre code').forEach((block) => {
 mermaid.run({ nodes: document.querySelectorAll('.mermaid') }).catch(console.warn);
 "#;
 
-pub fn export_html_document(markdown: &str, title: &str, dark_mode: bool) -> String {
-    build_html_document(markdown, title, dark_mode, false)
+pub fn export_html_document(
+    markdown: &str,
+    title: &str,
+    dark_mode: bool,
+    settings: &crate::settings::EditorSettings,
+) -> String {
+    build_html_document(markdown, title, dark_mode, false, settings)
 }
 
 /// HTML optimized for browser print-to-PDF (always light theme).
-pub fn export_print_html_document(markdown: &str, title: &str) -> String {
-    build_html_document(markdown, title, false, true)
+pub fn export_print_html_document(
+    markdown: &str,
+    title: &str,
+    settings: &crate::settings::EditorSettings,
+) -> String {
+    build_html_document(markdown, title, false, true, settings)
 }
 
-fn build_html_document(markdown: &str, title: &str, dark_mode: bool, for_print: bool) -> String {
-    let body = markdown::markdown_to_html(markdown);
+fn build_html_document(
+    markdown: &str,
+    title: &str,
+    dark_mode: bool,
+    for_print: bool,
+    settings: &crate::settings::EditorSettings,
+) -> String {
+    let body = markdown::markdown_to_html(markdown, settings);
     let theme_class = if dark_mode && !for_print {
         "dark"
     } else {
@@ -208,14 +223,14 @@ mod tests {
 
     #[test]
     fn export_includes_katex_and_math() {
-        let html = export_html_document("inline $x^2$", "Math", false);
+        let html = export_html_document("inline $x^2$", "Math", false, &crate::settings::EditorSettings::default());
         assert!(html.contains("katex.min.js"));
         assert!(html.contains("math-inline"));
     }
 
     #[test]
     fn print_export_triggers_print() {
-        let html = export_print_html_document("# Hi", "Hi");
+        let html = export_print_html_document("# Hi", "Hi", &crate::settings::EditorSettings::default());
         assert!(html.contains("window.print"));
         assert!(html.contains("@media print"));
     }

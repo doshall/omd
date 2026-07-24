@@ -161,6 +161,18 @@ html, body {
     padding: 0.2rem 0.5rem;
 }
 
+.storage-loading {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.35);
+    color: var(--text);
+    font-size: 1rem;
+}
+
 .image-lightbox {
     display: none;
     position: fixed;

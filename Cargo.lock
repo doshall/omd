@@ -3067,7 +3067,7 @@ dependencies = [
 
 [[package]]
 name = "omd"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "arboard",
  "base64 0.22.1",
@@ -3089,7 +3089,7 @@ dependencies = [
 
 [[package]]
 name = "omd-common"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "pulldown-cmark",
  "serde",
@@ -3097,7 +3097,7 @@ dependencies = [
 
 [[package]]
 name = "omd-web"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "console_error_panic_hook",
  "gloo-timers",

@@ -2,6 +2,7 @@ use eframe::egui::{self, Context};
 use crate::keybindings::KeybindingMode;
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize, PartialEq)]
+#[serde(default)]
 pub struct EditorSettings {
     pub show_line_numbers: bool,
     pub highlight_current_line: bool,
@@ -23,6 +24,10 @@ pub struct EditorSettings {
     pub auto_save_enabled: bool,
     /// Seconds of inactivity before auto-save writes to disk.
     pub auto_save_interval_secs: u32,
+    /// Show auto-generated table of contents in preview and export.
+    pub show_toc: bool,
+    /// Parse and render Markdown footnotes.
+    pub enable_footnotes: bool,
 }
 
 impl Default for EditorSettings {
@@ -44,6 +49,8 @@ impl Default for EditorSettings {
             vim_use_system_clipboard: true,
             auto_save_enabled: true,
             auto_save_interval_secs: 30,
+            show_toc: true,
+            enable_footnotes: true,
         }
     }
 }
@@ -90,6 +97,8 @@ pub fn render_settings_window(ctx: &Context, open: &mut bool, settings: &mut Edi
                 egui::Slider::new(&mut settings.preview_font_size, 12.0..=22.0)
                     .text("Preview font size"),
             );
+            ui.checkbox(&mut settings.show_toc, "Show table of contents");
+            ui.checkbox(&mut settings.enable_footnotes, "Enable footnotes");
 
             ui.separator();
             ui.heading("Files");

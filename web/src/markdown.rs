@@ -1,13 +1,21 @@
-use omd_common::{markdown_to_html_with_toc, parse_front_matter, resolve_title};
+use omd_common::{
+    markdown_to_html_with_options, parse_front_matter, resolve_title, MarkdownRenderOptions,
+};
 
 pub fn prepare_markdown(input: &str) -> (Option<omd_common::FrontMatter>, String) {
     let (fm, body) = parse_front_matter(input);
     (fm, body.to_string())
 }
 
-pub fn markdown_to_html(markdown: &str) -> String {
+pub fn markdown_to_html(markdown: &str, settings: &crate::settings::EditorSettings) -> String {
     let (_, body) = parse_front_matter(markdown);
-    markdown_to_html_with_toc(body, true).0
+    markdown_to_html_with_options(
+        body,
+        MarkdownRenderOptions {
+            include_toc: settings.show_toc,
+            enable_footnotes: settings.enable_footnotes,
+        },
+    )
 }
 
 pub fn export_title(filename: &str, markdown: &str) -> String {
@@ -80,7 +88,7 @@ mod tests {
     #[test]
     fn mermaid_transform_keeps_arrows() {
         let md = "```mermaid\nflowchart TD\n    A --> B\n```";
-        let html = markdown_to_html(md);
+        let html = markdown_to_html(md, &crate::settings::EditorSettings::default());
         assert!(html.contains("<div class=\"mermaid\">"));
         assert!(!html.contains("&amp;gt;"));
     }

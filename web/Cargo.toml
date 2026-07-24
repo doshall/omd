@@ -1,6 +1,6 @@
 [package]
 name = "omd-web"
-version = "0.5.0"
+version = "0.6.0"
 edition = "2021"
 description = "Browser version of omd markdown editor"
 license = "MIT"
@@ -42,6 +42,14 @@ web-sys = { version = "0.3", features = [
     "MouseEvent",
     "DragEvent",
     "ClipboardEvent",
+    "IdbDatabase",
+    "IdbFactory",
+    "IdbObjectStore",
+    "IdbOpenDbRequest",
+    "IdbRequest",
+    "IdbTransaction",
+    "IdbTransactionMode",
+    "DomStringList",
 ] }
 console_error_panic_hook = "0.1"
 gloo-timers = { version = "0.3", features = ["futures"] }

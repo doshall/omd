@@ -115,17 +115,35 @@ mermaid.run({ nodes: document.querySelectorAll('.mermaid') }).catch(console.warn
 "#;
 
 /// Build a standalone HTML document from Markdown source.
-pub fn export_html_document(markdown: &str, title: &str, dark_mode: bool) -> String {
-    build_html_document(markdown, title, dark_mode, false)
+pub fn export_html_document(
+    markdown: &str,
+    title: &str,
+    dark_mode: bool,
+    show_toc: bool,
+    enable_footnotes: bool,
+) -> String {
+    build_html_document(markdown, title, dark_mode, false, show_toc, enable_footnotes)
 }
 
 /// HTML for print-to-PDF via the system browser (light theme, auto-print).
-pub fn export_print_html_document(markdown: &str, title: &str) -> String {
-    build_html_document(markdown, title, false, true)
+pub fn export_print_html_document(
+    markdown: &str,
+    title: &str,
+    show_toc: bool,
+    enable_footnotes: bool,
+) -> String {
+    build_html_document(markdown, title, false, true, show_toc, enable_footnotes)
 }
 
-fn build_html_document(markdown: &str, title: &str, dark_mode: bool, for_print: bool) -> String {
-    let body = markdown::markdown_to_html(markdown);
+fn build_html_document(
+    markdown: &str,
+    title: &str,
+    dark_mode: bool,
+    for_print: bool,
+    show_toc: bool,
+    enable_footnotes: bool,
+) -> String {
+    let body = markdown::markdown_to_html(markdown, show_toc, enable_footnotes);
     let theme_class = if dark_mode && !for_print {
         "dark"
     } else {
@@ -214,7 +232,7 @@ mod tests {
 
     #[test]
     fn export_contains_article_and_title() {
-        let html = export_html_document("# Hello\n\nWorld", "Test", false);
+        let html = export_html_document("# Hello\n\nWorld", "Test", false, true, true);
         assert!(html.contains("<article"));
         assert!(html.contains("<title>Test</title>"));
         assert!(html.contains("katex.min.js"));
@@ -230,7 +248,7 @@ mod tests {
 
     #[test]
     fn print_html_includes_print_hook() {
-        let html = export_print_html_document("# Doc", "Doc");
+        let html = export_print_html_document("# Doc", "Doc", true, true);
         assert!(html.contains("window.print"));
     }
 }
